@@ -1,8 +1,10 @@
 # A-Share Quant Lab (`aqlab`)
 
-**一个从零实现、可复现的 A 股选股 + 回测实验室**，包含显式的执行成本模型、无未来函数的信号执行、横截面因子打分，以及一条可测试的 CLI。仓库为 **clean-room 原创实现**：不含任何第三方项目代码或整理内容。
+[![ci](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml)
 
-> 不是又一个"翻倍策略"仓库。这是一个把**研究纪律**写在代码里的工具：成本要显式、执行要延迟一根 K 线、策略要能被证伪。
+**一个从零实现、可复现的 A 股选股 + 回测实验室**，包含显式的执行成本模型、无未来函数的信号执行、横截面因子打分、**可审计的 LLM 研究代理（tool calling）**，以及一条可测试的 CLI。仓库为 **clean-room 原创实现**：不含任何第三方项目代码或整理内容。
+
+> 不是又一个"翻倍策略"仓库。这是一个把**研究纪律**写在代码里的工具：成本要显式、执行要延迟一根 K 线、策略要能被证伪、**代理说的每个数字都必须来自工具**。
 
 ---
 
@@ -20,7 +22,7 @@
 # 1) 安装（可编辑模式，附开发依赖）
 pip install -e ".[dev]"
 
-# 2) 跑测试（33 个用例，全部离线，无需网络/API key）
+# 2) 跑测试（60 个用例，全部离线，无需网络/API key）
 pytest -q
 
 # 3) 三分钟看结果：内置策略在同一份合成行情上的对比
@@ -36,6 +38,13 @@ python -m aqlab.cli run --csv data/raw/600519.csv --strategy ma_cross --params f
 # 6) 可选：下载真实日线（需要 tushare token 或 akshare）
 export TUSHARE_TOKEN=xxxx          # Windows: set TUSHARE_TOKEN=xxxx
 python -m aqlab.cli fetch --source akshare --symbol 600519 --start 2022-01-01 --end 2024-12-31 --out data/raw/600519.csv
+
+# 7) 代理可靠性评测（离线，无需 API key）
+python -m aqlab.cli eval --mode offline
+
+# 8) 用真实模型跑研究代理（需 OpenAI 兼容的 API key，如 DeepSeek）
+export AQLAB_LLM_API_KEY=sk-xxxx   # 可选：AQLAB_LLM_BASE_URL / AQLAB_LLM_MODEL
+python -m aqlab.cli agent --question "用 ma_cross(10,30) 回测 SYN001，给我总收益和 Sharpe" --trace output/trace.json
 ```
 
 ## 实测输出（可复现，合成行情）
@@ -64,6 +73,50 @@ python -m aqlab.cli fetch --source akshare --symbol 600519 --start 2022-01-01 --
 - 熊市里 `momentum` / `ma_cross` 把 -65% 的回撤压到 -11% / -21%，说明它们的价值在**风控**而不是收益增强。
 - 一个只看单一行情就宣称"策略有效"的分析，是不值得信的；**跨越不同行情做对照**才是起点。
 
+## LLM / Agent 研究层（v0.2，已实现）
+
+这一层的目标不是"让模型随便聊行情"，而是让 **断言可核查、可靠性可量化**：
+
+```
+问题 ──► 模型(plan) ──► 工具调用 ──► 只读工具执行 ──► 观察结果 ──► ... ──► 结论文本
+                             │                                              │
+                             └────────────── 全步骤 trace ──────────────────┘
+                                              │
+                                    评测：数字是否全部来自工具？
+```
+
+**只读工具层**（`aqlab/tools.py`，6 个工具，带 JSON Schema）：
+`list_strategies` / `describe_data` / `get_bars` / `compute_indicator` / `run_backtest` / `screen_universe`。
+工具不写文件、不下单、不改状态；**错误以 `ok=false` 返回**（例如标的不存在、参数非法），迫使模型选择"弃答"而不是编数字。
+
+**代理循环**（`aqlab/agent.py`）：plan → 调用工具 → 观察 → 再决策，最多 `max_steps` 步；每一步（含工具入参与返回）都写入 trace，可回放审计。支持两种客户端：任何 OpenAI 兼容端点（仅用标准库实现，DeepSeek/Moonshot/vLLM/Ollama 网关均可）与用于离线测试的 `ScriptedClient`。
+
+**评测集**（`aqlab/evaluation.py`）：5 个任务覆盖三类情形——正常任务、**陷阱任务**（标的不存在 / 参数非法，正确行为是弃答）、**回归任务**（重复执行结果必须一致）。指标定义：
+
+| 指标 | 含义 |
+| --- | --- |
+| `grounded_number_rate` | 答案里的数字能在工具返回中找到的比例（**未落地的数字 = 幻觉**） |
+| `hallucinated_tasks` | 至少出现一个未落地数字的任务数 |
+| `abstain_accuracy` | 陷阱任务上"明确弃答"的比例 |
+| `tool_success_rate` | 工具调用返回 `ok=true` 的比例（差距来自刻意设计的陷阱任务） |
+| `regression_consistency` | 同一任务重复执行结果一致的比例 |
+
+**离线评测实测输出**（`python -m aqlab.cli eval --mode offline`）：
+
+| 指标 | 值 |
+| --- | --- |
+| tasks | 5 |
+| answered_rate | 1.000 |
+| tool_calls | 6 |
+| tool_success_rate | 0.667 |
+| numbers_total | 10 |
+| grounded_number_rate | 0.900 |
+| hallucinated_tasks | 1 |
+| abstain_accuracy | 1.000 |
+| regression_consistency | 1.000 |
+
+读法：唯一被判定为幻觉的任务，是脚本里**刻意让模型"凭记忆报 999.99%"**的那条，`[999.99]` 被明确标记为未落地数字；两个陷阱任务都被正确识别为"证据不足"；回归任务两次执行结果一致。这套机制的价值在于：**换任何模型进来，都能得到同一把尺子的分数**，而不是靠感觉说"这个模型挺靠谱"。
+
 ## 设计原则
 
 | 原则 | 落地方式 |
@@ -78,7 +131,7 @@ python -m aqlab.cli fetch --source akshare --symbol 600519 --start 2022-01-01 --
 ## 目录结构
 
 ```
-zgnb-skill/
+ashare-quant-lab/
 ├── src/aqlab/
 │   ├── data.py          # 数据归一化（含中文列名）、确定性合成行情、可选 tushare/akshare 抓取
 │   ├── indicators.py    # SMA/EMA/RSI/ATR/Donchian/z-score/波动率（全部因果）
@@ -87,8 +140,11 @@ zgnb-skill/
 │   ├── metrics.py       # 收益/年化/波动/Sharpe/Sortino/回撤/Calmar/换手/胜率
 │   ├── screen.py        # 横截面因子表与加权打分排序
 │   ├── report.py        # markdown 报告 + metrics.json + equity.csv + trades.csv
-│   └── cli.py           # demo / run / screen / fetch
-├── tests/               # 33 个用例：数据、指标、回测（含无未来函数反证）、指标计算、筛选
+│   ├── tools.py         # 只读工具层（JSON Schema，错误以 ok=false 返回）
+│   ├── agent.py         # 有界 plan-act-observe 代理循环 + trace + 两种 LLM 客户端
+│   ├── evaluation.py    # 评测集与指标：落地率/幻觉/弃答/回归一致性
+│   └── cli.py           # demo / run / screen / fetch / eval / agent
+├── tests/               # 60 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测
 ├── examples/            # 离线 demo 脚本 + 示例报告
 ├── docs/                # 架构说明与路线图
 └── .github/workflows/   # CI：多 Python 版本跑 pytest
@@ -96,7 +152,7 @@ zgnb-skill/
 
 ## 路线图
 
-- **v0.2（进行中）LLM / Agent 研究层**：把"数据查询、因子计算、回测执行"暴露成工具（tool calling），让模型生成假设 → 自动回测 → 汇总成可复核的研究笔记；并建立**评测集**（含"看起来合理但其实错"的陷阱任务）来量化代理的可靠性。
+- ✅ **v0.2（已完成）LLM / Agent 研究层**：只读工具层（6 个工具，JSON Schema）+ 有界代理循环 + 全步骤 trace + 评测集（含"看起来合理但其实错"的陷阱任务）与落地率/幻觉率/弃答率指标。
 - **v0.3** 组合层：权重优化、行业/风格暴露、换手约束。
 - **v0.4** 数据质量：缺口/停牌/复权一致性检查，多源交叉校验。
 - **v0.5** 可视化报告：净值/回撤/因子贡献图。

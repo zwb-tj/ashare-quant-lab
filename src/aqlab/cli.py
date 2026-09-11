@@ -140,6 +140,66 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(args: argparse.Namespace) -> int:
+    import json
+
+    from aqlab.agent import OpenAICompatClient
+    from aqlab.evaluation import default_tasks, format_eval_report, run_eval
+    from aqlab.tools import default_registry
+
+    registry = default_registry(args.data_dir)
+    tasks = default_tasks(registry, symbol=args.symbol)
+
+    factory = None
+    if args.mode == "live":
+        try:
+            client = OpenAICompatClient(model=args.model)
+        except ValueError as exc:
+            print(f"[live 模式需要 API key] {exc}", file=sys.stderr)
+            return 2
+        factory = lambda _task: client  # noqa: E731 - one client reused across tasks
+
+    report = run_eval(tasks, registry, client_factory=factory, max_steps=args.max_steps)
+    print(format_eval_report(report))
+
+    if args.out:
+        out = Path(args.out) / "eval"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "report.md").write_text(format_eval_report(report), encoding="utf-8")
+        (out / "report.json").write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n报告已写入：{out}")
+    return 0
+
+
+def cmd_agent(args: argparse.Namespace) -> int:
+    import json
+
+    from aqlab.agent import OpenAICompatClient, ResearchAgent
+    from aqlab.tools import default_registry
+
+    registry = default_registry(args.data_dir)
+    try:
+        client = OpenAICompatClient(model=args.model)
+    except ValueError as exc:
+        print(
+            f"[需要 API key] {exc}\n提示：可先用 `python -m aqlab.cli eval --mode offline` 查看离线评测。",
+            file=sys.stderr,
+        )
+        return 2
+
+    agent = ResearchAgent(registry, client, max_steps=args.max_steps)
+    result = agent.run(args.question)
+    print(result.answer or "（模型没有给出最终答案）")
+    print()
+    print(f"停止原因：{result.stopped_reason} ｜ 步骤：{len(result.steps)} ｜ 工具：{','.join(result.tool_names_used) or '-'}")
+    if args.trace:
+        out = Path(args.trace)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"trace 已写入：{out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -177,6 +237,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_fetch.add_argument("--end", required=True)
     p_fetch.add_argument("--out", default="data/raw/bars.csv")
     p_fetch.set_defaults(func=cmd_fetch)
+
+    p_eval = sub.add_parser("eval", help="run the agent evaluation harness (offline by default)")
+    p_eval.add_argument("--mode", choices=["offline", "live"], default="offline")
+    p_eval.add_argument("--model", default=None, help="model name for live mode")
+    p_eval.add_argument("--symbol", default=None)
+    p_eval.add_argument("--data-dir", default=None, help="CSV directory as data source; default synthetic")
+    p_eval.add_argument("--max-steps", type=int, default=6)
+    p_eval.add_argument("--out", default=str(DEFAULT_OUT))
+    p_eval.set_defaults(func=cmd_eval)
+
+    p_agent = sub.add_parser("agent", help="ask the tool-using research agent a question (needs an LLM API key)")
+    p_agent.add_argument("--question", required=True)
+    p_agent.add_argument("--model", default=None)
+    p_agent.add_argument("--data-dir", default=None)
+    p_agent.add_argument("--max-steps", type=int, default=6)
+    p_agent.add_argument("--trace", default=None, help="path to write the full step trace as JSON")
+    p_agent.set_defaults(func=cmd_agent)
     return parser
 
 

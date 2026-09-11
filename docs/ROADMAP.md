@@ -1,23 +1,29 @@
 # 路线图
 
-## v0.2 · LLM / Agent 研究层（进行中）
+## v0.2 · LLM / Agent 研究层（✅ 已完成，2026-09）
 
-**目标**：让模型承担"提出假设 → 调用工具 → 得到证据 → 写成研究笔记"的循环，同时把可靠性**量化**出来。
+**目标**：让模型承担"提出假设 → 调用工具 → 得到证据 → 写成结论"的循环，同时把可靠性**量化**出来。
 
-计划组件：
+已交付：
 
-1. **工具层（tool calling）**
-   - `query_bars(symbol, start, end)`：取行情（只读）
-   - `compute_factor(symbol, factor, window)`：算因子
-   - `run_backtest(strategy, params, symbol, costs)`：跑回测，返回指标 JSON
-   - `list_strategies()`：可用策略与参数说明
-   - 所有工具**只读、幂等、带 schema 校验**；写文件类操作一律不暴露给模型。
-2. **代理循环**：plan → 调用工具 → 观察结果 → 修正假设；每一步落盘成 trace（可回放、可审计）。
-3. **评测集**：20–30 个任务，分三类
-   - 正常任务：需要 1–3 次工具调用得出正确指标；
-   - 陷阱任务：数据不足、参数非法、结论与指标矛盾（模型必须说"证据不足"而不是编）；
-   - 回归任务：同一问题重复运行，输出需一致。
-   指标：工具调用成功率、数值与真值一致率、幻觉率（编造不存在的数据/指标）、拒答正确率。
+1. **工具层（tool calling）** — `src/aqlab/tools.py`，6 个只读工具，带 JSON Schema：
+   `list_strategies` / `describe_data` / `get_bars` / `compute_indicator` / `run_backtest` / `screen_universe`。
+   - 只读、幂等、参数校验；**错误以 `ok=false` 返回**（未知标的、非法参数、历史不足）；
+   - 可挂 `SyntheticDataSource`（离线）或 `CsvDataSource`（本地 CSV 目录）。
+2. **代理循环** — `src/aqlab/agent.py`：plan → 调用工具 → 观察 → 再决策，`max_steps` 硬上限；
+   每步写入 trace（含工具入参与返回），可回放审计；支持原生 tool_calls 与文本形式 JSON 两种调用格式。
+3. **客户端** — `OpenAICompatClient`（仅标准库，任何 OpenAI 兼容端点：DeepSeek / Moonshot / vLLM / Ollama 网关）
+   与 `ScriptedClient`（离线确定性测试）。
+4. **评测集与指标** — `src/aqlab/evaluation.py`：5 个任务（正常 / 标的不存在 / 参数非法 / 幻觉诱导 / 回归重复），
+   指标为 `grounded_number_rate`、`hallucinated_tasks`、`abstain_accuracy`、`tool_success_rate`、`regression_consistency`。
+   离线实测：`grounded_number_rate=0.900`，`hallucinated_tasks=1`（刻意诱导的那条被抓出），`abstain_accuracy=1.000`，`regression_consistency=1.000`。
+5. **CLI** — `aqlab eval --mode offline|live`、`aqlab agent --question ... --trace ...`；无 key 时给出可执行提示而非报错崩溃。
+6. **测试** — 工具、代理（含 `max_steps` 与小工具错误回灌）、评测（含"坏代理必须低分"）共 23 个新用例，全套 60 个用例离线通过。
+
+### v0.2 遗留（下一轮继续）
+- 评测集扩展到 20–30 个任务，加入"结论与指标自相矛盾"类陷阱；
+- 代理产出的研究笔记落盘为可复核 markdown（引用每次工具调用的证据编号）；
+- 多轮对话与工具结果的上下文压缩策略。
 4. **防护**：所有模型产出的数字必须来自工具返回值（禁止模型自行算数）；报告里标注每句话的证据来源。
 
 ## v0.3 · 组合层
