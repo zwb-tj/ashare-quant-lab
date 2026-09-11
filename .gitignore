@@ -1,0 +1,37 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# ---- Test / cache ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Data & outputs (never commit market data dumps or reports) ----
+data/raw/
+data/cache/
+output/
+reports/
+*.parquet
+*.feather
+
+# ---- Secrets ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# ---- OS / editors ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
