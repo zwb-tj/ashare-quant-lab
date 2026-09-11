@@ -11,6 +11,7 @@ Examples
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -244,6 +245,7 @@ def cmd_daily(args: argparse.Namespace) -> int:
             symbols=[s.strip() for s in args.symbols.split(",") if s.strip()],
             start=args.start or "2020-01-01",
             end=args.end or args.date or str(pd.Timestamp.today().date()),
+            with_turnover=bool(args.turnover or os.environ.get("AQLAB_TURNOVER")),
         )
     elif args.data_dir:
         source = CsvDataSource(args.data_dir)
@@ -333,6 +335,38 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_walkforward(args: argparse.Namespace) -> int:
+    from aqlab.position import PositionConfig
+    from aqlab.profiles import load_profile
+    from aqlab.rules import DEFAULT_RULE_BINDINGS
+    from aqlab.tools import CsvDataSource, SyntheticDataSource
+    from aqlab.walkforward import WalkForwardConfig, format_walkforward, walk_forward, write_walkforward
+
+    if args.data_dir:
+        source = CsvDataSource(args.data_dir)
+    else:
+        source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
+
+    universe = {sym: source.bars(sym) for sym in source.symbols()}
+    bindings = load_profile(args.profile) if args.profile else list(DEFAULT_RULE_BINDINGS)
+    position_config = PositionConfig(hard_stop_pct=None) if args.no_hard_stop else None
+    config = WalkForwardConfig(
+        test_days=args.test_days,
+        step_days=args.step_days,
+        min_history=args.min_history,
+        use_position=not args.fixed_horizon,
+        horizon=args.horizon,
+        position_config=position_config,
+    )
+    result = walk_forward(universe, bindings, config=config)
+    print(format_walkforward(result))
+
+    if args.out:
+        paths = write_walkforward(Path(args.out) / "walkforward", result)
+        print(f"\n报告已写入：{paths['markdown']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -393,6 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_daily.add_argument("--top", type=int, default=10)
     p_daily.add_argument("--data-dir", default=None, help="CSV directory as data source")
     p_daily.add_argument("--tushare", action="store_true", help="use Tushare (needs TUSHARE_TOKEN + --symbols)")
+    p_daily.add_argument("--turnover", action="store_true", help="also fetch daily_basic turnover_rate (real 换手率)")
     p_daily.add_argument("--symbols", default=None, help="comma separated symbols for --tushare")
     p_daily.add_argument("--start", default=None)
     p_daily.add_argument("--end", default=None)
@@ -428,6 +463,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_plan.add_argument("--lookback", type=int, default=30, help="bars used for the structural reference low/high")
     p_plan.add_argument("--out", default=str(DEFAULT_OUT))
     p_plan.set_defaults(func=cmd_plan)
+
+    p_wf = sub.add_parser("walkforward", help="rolling-window validation of a rule set (signals -> trades)")
+    p_wf.add_argument("--profile", default=None)
+    p_wf.add_argument("--data-dir", default=None)
+    p_wf.add_argument("--symbols-count", type=int, default=40)
+    p_wf.add_argument("--days", type=int, default=900)
+    p_wf.add_argument("--seed", type=int, default=11)
+    p_wf.add_argument("--test-days", type=int, default=60)
+    p_wf.add_argument("--step-days", type=int, default=60)
+    p_wf.add_argument("--min-history", type=int, default=120)
+    p_wf.add_argument("--horizon", type=int, default=5, help="fixed holding period when --fixed-horizon is used")
+    p_wf.add_argument("--fixed-horizon", action="store_true", help="skip position/exit rules, use a fixed holding period")
+    p_wf.add_argument("--no-hard-stop", action="store_true", help="disable the -2%% short-term hard stop (experiment)")
+    p_wf.add_argument("--out", default=str(DEFAULT_OUT))
+    p_wf.set_defaults(func=cmd_walkforward)
     return parser
 
 

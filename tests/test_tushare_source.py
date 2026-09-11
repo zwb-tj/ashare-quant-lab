@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from aqlab.data import TushareDataSource, generate_synthetic_ohlcv
+from aqlab.data import TushareDataSource, generate_synthetic_ohlcv, normalize_ohlcv
 
 
 @pytest.fixture
@@ -74,3 +74,85 @@ def test_describe_reports_cache_contents(tmp_path, fake_fetch):
 def test_empty_symbols_rejected(tmp_path):
     with pytest.raises(ValueError):
         TushareDataSource([], "2024-01-01", "2024-12-31", cache_dir=tmp_path)
+
+
+# --------------------------------------------------------------------------------------
+# 真实换手率（daily_basic）接入
+# --------------------------------------------------------------------------------------
+def make_turnover_fn(values=(0.02, 0.03)):
+    calls = {"n": 0}
+
+    def turnover_fn(symbol, start, end, token=None):
+        calls["n"] += 1
+        df = generate_synthetic_ohlcv(n_days=120, seed=3)
+        series = pd.Series(list(values) * 60, index=df.index[: len(list(values) * 60)], dtype=float)
+        return series.to_frame("turnover")
+
+    turnover_fn.calls = calls
+    return turnover_fn
+
+
+def test_turnover_merged_and_cached(tmp_path, fake_fetch):
+    turnover_fn = make_turnover_fn()
+    source = TushareDataSource(
+        ["600519.SH"], "2024-01-01", "2024-12-31", cache_dir=tmp_path,
+        fetch_fn=fake_fetch, turnover_fn=turnover_fn, with_turnover=True,
+    )
+    df = source.bars("600519.SH")
+    assert "turnover" in df.columns
+    assert source.turnover_available is True
+    assert turnover_fn.calls["n"] == 1
+    assert source.describe()["with_turnover"] is True
+    assert source.describe()["turnover_available"] is True
+
+    # 缓存里带上了 turnover，第二个实例直接用缓存且仍然标记为可用
+    again = TushareDataSource(
+        ["600519.SH"], "2024-01-01", "2024-12-31", cache_dir=tmp_path,
+        fetch_fn=fake_fetch, turnover_fn=turnover_fn, with_turnover=True,
+    )
+    cached = again.bars("600519.SH")
+    assert "turnover" in cached.columns
+    assert again.turnover_available is True
+    assert turnover_fn.calls["n"] == 1     # 未再调用
+
+
+def test_turnover_failure_degrades_without_breaking_bars(tmp_path, fake_fetch):
+    def boom(*_a, **_k):
+        raise RuntimeError("daily_basic unavailable")
+
+    source = TushareDataSource(
+        ["600519.SH"], "2024-01-01", "2024-12-31", cache_dir=tmp_path,
+        fetch_fn=fake_fetch, turnover_fn=boom, with_turnover=True,
+    )
+    df = source.bars("600519.SH")
+    assert "turnover" not in df.columns     # 行情仍然可用
+    assert source.turnover_available is False
+    assert "turnover" in (source.last_error or "")
+
+
+def test_turnover_empty_result_marks_unavailable(tmp_path, fake_fetch):
+    def empty(*_a, **_k):
+        return pd.DataFrame(columns=["turnover"])
+
+    source = TushareDataSource(
+        ["600519.SH"], "2024-01-01", "2024-12-31", cache_dir=tmp_path,
+        fetch_fn=fake_fetch, turnover_fn=empty, with_turnover=True,
+    )
+    df = source.bars("600519.SH")
+    assert "turnover" not in df.columns
+    assert source.turnover_available is False
+
+
+def test_turnover_disabled_by_default(tmp_path, fake_fetch):
+    source = TushareDataSource(["600519.SH"], "2024-01-01", "2024-12-31", cache_dir=tmp_path, fetch_fn=fake_fetch)
+    df = source.bars("600519.SH")
+    assert "turnover" not in df.columns
+    assert source.turnover_available is None
+
+
+def test_normalize_ohlcv_keeps_turnover_column():
+    df = generate_synthetic_ohlcv(n_days=10, seed=1)
+    df["turnover"] = 0.02
+    out = normalize_ohlcv(df)
+    assert "turnover" in out.columns
+    assert list(out.columns)[:5] == ["open", "high", "low", "close", "volume"]

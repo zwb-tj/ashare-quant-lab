@@ -318,17 +318,19 @@ def simulate_signals(
             entry_bar = i + entry_lag
             entry_price = float(df["close"].iloc[entry_bar])
             events, summary = simulate_exit(df, entry_bar, entry_price, config=config)
+            last_bar = max((e.bar for e in events), default=entry_bar)
             rows.append(
                 {
                     "signal_date": str(df.index[i].date()),
                     "entry_date": str(df.index[entry_bar].date()),
                     "entry_price": round(entry_price, 3),
+                    "exit_date": str(df.index[last_bar].date()) if last_bar < len(df) else str(df.index[-1].date()),
+                    "exit_price": round(float(df["close"].iloc[min(last_bar, len(df) - 1)]), 3),
                     "exit_reason": summary["exit_reason"],
                     "return": round(float(summary["return"]), 4),
                     "bars_held": summary["bars_held"],
                 }
             )
-            last_bar = max((e.bar for e in events), default=entry_bar)
             i = last_bar + 1
         else:
             i += 1

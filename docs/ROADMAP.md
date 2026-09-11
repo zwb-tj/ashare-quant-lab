@@ -107,6 +107,17 @@
 - 指标层新增 `bbi_line`（(MA3+MA6+MA12+MA24)/4）。
 - 测试：12 个新用例（结构止损/硬止损/减半+波段/脱离成本/BBI 两日破位/时间止损两条路径/防卖飞评分降级/信号次日入场/参数校验）。
 
+## v0.4.4 · 滚动窗口校验与真实换手率（✅ 已完成，2026-09）
+
+1. **`src/aqlab/walkforward.py`** —— 把"规则 → 入场 → 离场"整条链放进滚动窗口：
+   - `composite_scores`（加权综合分作为信号）、`window_bounds`、`benchmark_return`；
+   - `walk_forward` 输出 `windows`（窗口级指标）+ `trades`（逐笔）+ `summary`；
+   - **同持有期基准**：每笔交易都带 `bench_return`（该笔持有区间内的买入持有收益），`超额%` 只有这个口径才可比（早期版本拿单笔 1% 对比窗口买入持有 20%，属于苹果比橘子，已修正）；
+   - `format_walkforward` / `write_walkforward`，CLI `aqlab walkforward`（含 `--fixed-horizon`、`--no-hard-stop` 两个实验开关）。
+2. **真实换手率接入** —— `fetch_tushare_turnover`（`daily_basic.turnover_rate`，% → 小数）+ `TushareDataSource(with_turnover=True)`：有缓存则复用、抓取失败则**降级但继续**（`turnover_available=False` 并写入 `last_error`），报告照实说明换手率是估计值；CLI `aqlab daily --tushare --turnover`（或环境变量 `AQLAB_TURNOVER=1`）。
+3. **实测结论（诚实版）**：默认配置 814 笔 / 胜率 57.1% / 单笔均收益 1.17% / 同期间基准 1.44% / 超额 **-0.28pp**，仅 2/15 窗口跑赢；`--no-hard-stop` 把胜率提到 61.7% 但超额反而 -0.36pp。结论：**信号层有价值（见 v0.4.2），离场层在中性行情中是保险而非收益增强**。
+4. **测试**：22 个新用例（窗口切分/手算基准/固定持有期/持仓路径/窗口归属/确定性/无信号/参数校验；换手率合并与缓存、抓取失败降级、空结果、默认关闭、`normalize_ohlcv` 保留 turnover 列）；全套 **166** 个用例离线通过。
+
 ## v0.5 · 组合层
 - 权重优化（风险平价 / 均值方差 + 收缩估计）
 - 行业与风格暴露、换手约束

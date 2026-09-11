@@ -57,7 +57,7 @@ def normalize_ohlcv(df: pd.DataFrame, date_col: str | None = None) -> pd.DataFra
         raise ValueError(f"missing required OHLC columns: {sorted(missing)}")
     if "volume" not in out.columns:
         out["volume"] = np.nan
-    out = out[[c for c in OHLCV_COLUMNS if c in out.columns]]
+    out = out[[c for c in OHLCV_COLUMNS if c in out.columns] + [c for c in ("turnover", "amount", "pct_change") if c in out.columns]]
     for c in out.columns:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     out = out.dropna(subset=["open", "high", "low", "close"]).sort_index()
@@ -161,6 +161,38 @@ def fetch_tushare(
     return df.sort_index()
 
 
+def fetch_tushare_turnover(symbol: str, start: str, end: str, token: str | None = None) -> pd.DataFrame:
+    """Fetch the real turnover rate from Tushare ``daily_basic``.
+
+    Returns a frame indexed by ``date`` with a single ``turnover`` column as a
+    *fraction* (Tushare reports percent). Needed by the 0AMV active-share model and
+    by the simplified B1 rule; both work without it, but then the turnover input is
+    an estimate (and the reports say so).
+    """
+    try:
+        import tushare as ts  # type: ignore
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ImportError("install the data extra: pip install 'ashare-quant-lab[data]'") from exc
+
+    token = token or os.environ.get("TUSHARE_TOKEN")
+    if not token:
+        raise ValueError("a Tushare token is required (argument or TUSHARE_TOKEN env var)")
+    pro = ts.pro_api(token)
+    df = pro.daily_basic(
+        ts_code=symbol,
+        start_date=start.replace("-", ""),
+        end_date=end.replace("-", ""),
+        fields="trade_date,turnover_rate",
+    )
+    if df is None or df.empty:
+        raise ValueError(f"no turnover data returned for {symbol}")
+    df = df.rename(columns={"trade_date": "date", "turnover_rate": "turnover"})
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date").sort_index()
+    df["turnover"] = pd.to_numeric(df["turnover"], errors="coerce") / 100.0
+    return df[["turnover"]].dropna()
+
+
 def fetch_akshare(symbol: str, start: str, end: str, adjust: str = "qfq") -> pd.DataFrame:
     """Fetch daily bars from AkShare (requires the ``data`` extra).
 
@@ -194,6 +226,10 @@ class TushareDataSource:
       ``self.degraded`` becomes ``True`` with ``self.last_error`` set — the daily
       report can then say "数据降级" instead of silently pretending everything is fine;
     * ``fetch_fn`` is injectable, which keeps the whole class testable offline.
+    * ``with_turnover=True`` additionally merges the real ``daily_basic.turnover_rate``
+      (via ``turnover_fn``); if that call fails the frame is returned without the
+      column and ``turnover_available`` becomes ``False`` — reports must then say the
+      turnover input is missing, never pretend.
     """
 
     def __init__(
@@ -204,6 +240,8 @@ class TushareDataSource:
         token: str | None = None,
         cache_dir: str | os.PathLike = "data/raw",
         fetch_fn=None,
+        turnover_fn=None,
+        with_turnover: bool = False,
     ) -> None:
         self._symbols = [str(s) for s in symbols]
         if not self._symbols:
@@ -214,6 +252,9 @@ class TushareDataSource:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._fetch = fetch_fn or fetch_tushare
+        self._turnover_fn = turnover_fn or (fetch_tushare_turnover if with_turnover else None)
+        self.with_turnover = bool(with_turnover)
+        self.turnover_available: bool | None = None
         self.degraded = False
         self.last_error: str | None = None
         self._cache: dict[str, pd.DataFrame] = {}
@@ -224,12 +265,39 @@ class TushareDataSource:
     def _cache_path(self, symbol: str) -> Path:
         return self.cache_dir / f"{symbol.replace('.', '_')}.csv"
 
+    def _attach_turnover(self, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+        """Merge the real turnover rate when enabled; degrade loudly on failure."""
+        if not self.with_turnover or self._turnover_fn is None:
+            return df
+        try:
+            turnover = self._turnover_fn(symbol, self.start, self.end, token=self.token)
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            self.turnover_available = False
+            self.last_error = self.last_error or f"{symbol} turnover: {type(exc).__name__}: {exc}"
+            return df
+        if turnover is None or len(turnover) == 0:
+            self.turnover_available = False
+            return df
+        # 真实接口（daily_basic）返回 DataFrame；测试桩可能返回 Series，两者都要支持
+        if isinstance(turnover, pd.DataFrame):
+            if "turnover" not in turnover.columns:
+                self.turnover_available = False
+                return df
+            series = turnover["turnover"].astype(float)
+        else:
+            series = turnover.astype(float).rename("turnover")
+        merged = df.join(series.rename("turnover"), how="left")
+        self.turnover_available = bool(merged["turnover"].notna().any())
+        return merged
+
     def bars(self, symbol: str) -> pd.DataFrame:
         if symbol in self._cache:
             return self._cache[symbol]
         path = self._cache_path(symbol)
         if path.exists():
             df = load_ohlcv_csv(path)
+            if "turnover" in df.columns and self.turnover_available is None:
+                self.turnover_available = bool(df["turnover"].notna().any())
             self._cache[symbol] = df
             return df
         try:
@@ -238,6 +306,7 @@ class TushareDataSource:
             self.last_error = f"{symbol}: {type(exc).__name__}: {exc}"
             self.degraded = True
             raise KeyError(f"无法获取 {symbol} 且无本地缓存（{self.last_error}）") from exc
+        df = self._attach_turnover(symbol, df)
         df.to_csv(path, encoding="utf-8-sig")
         self._cache[symbol] = df
         return df
@@ -249,6 +318,8 @@ class TushareDataSource:
             "start": self.start,
             "end": self.end,
             "cache_dir": str(self.cache_dir),
+            "with_turnover": self.with_turnover,
+            "turnover_available": self.turnover_available,
             "cached": sorted(p.stem for p in self.cache_dir.glob("*.csv"))[:20],
         }
 
