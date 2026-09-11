@@ -230,7 +230,8 @@ def cmd_daily(args: argparse.Namespace) -> int:
 
     from aqlab.notify import FeishuWebhookNotifier
     from aqlab.pipeline import DailyConfig, DailyPipeline, render_markdown, write_daily_report
-    from aqlab.rules import DEFAULT_RULE_BINDINGS, ActivityValueGate
+    from aqlab.profiles import build_gate, load_profile
+    from aqlab.rules import DEFAULT_RULE_BINDINGS
     from aqlab.tools import CsvDataSource, SyntheticDataSource
 
     if args.tushare:
@@ -249,12 +250,14 @@ def cmd_daily(args: argparse.Namespace) -> int:
     else:
         source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
 
-    bindings = _apply_rule_overrides(DEFAULT_RULE_BINDINGS, args.rule)
+    base_bindings = load_profile(args.profile) if args.profile else list(DEFAULT_RULE_BINDINGS)
+    bindings = _apply_rule_overrides(base_bindings, args.rule)
+    gate_name = "none" if args.no_gate else args.gate
     pipeline = DailyPipeline(
         source=source,
         rule_bindings=bindings,
-        gate=ActivityValueGate() if not args.no_gate else None,
-        config=DailyConfig(top_n=args.top, as_of=args.date, use_gate=not args.no_gate),
+        gate=build_gate(gate_name),
+        config=DailyConfig(top_n=args.top, as_of=args.date, use_gate=gate_name != "none"),
         notifier=FeishuWebhookNotifier(webhook_url=args.webhook, dry_run=not args.push),
     )
     report = pipeline.run(push=True)
@@ -334,7 +337,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_daily.add_argument("--start", default=None)
     p_daily.add_argument("--end", default=None)
     p_daily.add_argument("--rule", action="append", default=None, help="override e.g. --rule needle_below_ma.ma_window=30")
-    p_daily.add_argument("--no-gate", action="store_true", help="disable the activity-value market gate")
+    p_daily.add_argument("--profile", default=None, help="rule set: generic|b1|b2|b3|needle_20|needle_30|volume_price_v3|zgnb_full|zgnb_needle30")
+    p_daily.add_argument("--gate", choices=["amv", "activity", "none"], default="amv", help="market gate (default amv = 0AMV 波段开关)")
+    p_daily.add_argument("--no-gate", action="store_true", help="disable the market gate entirely")
     p_daily.add_argument("--push", action="store_true", help="really push to Feishu (default is dry-run)")
     p_daily.add_argument("--webhook", default=None, help="Feishu webhook URL (falls back to FEISHU_WEBHOOK)")
     p_daily.add_argument("--symbols-count", type=int, default=30, help="synthetic universe size when no data source is given")

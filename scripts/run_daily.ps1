@@ -46,6 +46,8 @@ if ($env:AQLAB_RULE_OVERRIDES) {
     }
 }
 if (-not $DryRun) { $argsList += '--push' }
+if ($env:AQLAB_PROFILE) { $argsList += @('--profile', $env:AQLAB_PROFILE) }
+if ($env:AQLAB_GATE) { $argsList += @('--gate', $env:AQLAB_GATE) }
 
 # ---- 运行并落日志（兼容 Windows PowerShell 5.1）----
 $stampLine = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] aqlab daily 开始：python $($argsList -join ' ')"

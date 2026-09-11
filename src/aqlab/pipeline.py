@@ -50,6 +50,7 @@ class DailyReport:
     gate_state: int
     weights: dict
     picks: list[dict]
+    gate_trigger: str | None = None
     notes: list[str] = field(default_factory=list)
     notifier_result: dict | None = None
 
@@ -59,6 +60,7 @@ class DailyReport:
             "universe_size": self.universe_size,
             "eligible_size": self.eligible_size,
             "gate_state": self.gate_state,
+            "gate_trigger": self.gate_trigger,
             "weights": self.weights,
             "notes": self.notes,
             "picks": self.picks,
@@ -67,6 +69,8 @@ class DailyReport:
 
     def summary_lines(self) -> list[str]:
         gate_text = "🟢 开关打开" if self.gate_state else "🔴 开关关闭（不产生新买点）"
+        if self.gate_trigger:
+            gate_text += f"（{self.gate_trigger}）"
         lines = [
             f"**{self.as_of}** ｜ 票池 {self.universe_size} 只（可用 {self.eligible_size} 只）｜ {gate_text}",
         ]
@@ -124,8 +128,13 @@ class DailyPipeline:
 
         notes: list[str] = []
         gate_state = 1
+        gate_trigger: str | None = None
         if self.gate is not None and self.config.use_gate:
             gate_state = self.gate.state_at(universe, as_of=as_of)
+            if hasattr(self.gate, "trigger_at"):
+                gate_trigger = self.gate.trigger_at(universe, as_of=as_of)
+            for note in getattr(self.gate, "notes", [])[:2]:
+                notes.append(f"开关数据口径：{note}")
             if gate_state == 0:
                 notes.append("活跃市值开关关闭：本期不产生新买点，以下仅为观察名单。")
 
@@ -172,6 +181,7 @@ class DailyPipeline:
             universe_size=len(symbols),
             eligible_size=eligible,
             gate_state=gate_state,
+            gate_trigger=gate_trigger,
             weights=self.weights,
             picks=picks,
             notes=notes,

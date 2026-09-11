@@ -213,6 +213,50 @@ ashare-quant-lab/
 └── .github/workflows/   # CI：多 Python 版本跑 pytest
 ```
 
+## 个人策略集：B1/B2/B3 · 单针下20/30 · 量价齐升V3 · 0AMV 活跃市值
+
+这一层是作者自己交易研究中的规则，已按 **参数化 + 档案（profile）** 的方式重新实现（`src/aqlab/rules_zgnb.py`、`profiles.py`），阈值全部可配置：
+
+| 规则 | 命中口径（默认值） |
+| --- | --- |
+| `b1_opportunity` | J ≤ -10；当日涨幅 -2% ~ +1.8%；振幅 ≤ 7%；20 日累计换手 < 38%（有换手率列时启用，缺失则跳过并在报告里说明；`require_turnover=True` 可设为硬性） |
+| `b2_confirm` | B1 后 3 个交易日内，涨幅 ≥ 4%，J < 55，且放量（量 > 前一日） |
+| `b3_confirm` | B2 后出现十字星/小阴线（实体 ≤ 2%），且平开（\|开盘/前收-1\| ≤ 1%） |
+| `needle_rsl` | 单针下20：RSL(3) ≤ 20 且 RSL(21) ≥ 80；单针下30：RSL(3) < 30 且 RSL(21) > 85（`RSL(N)=100*(C-LLV(L,N))/(HHV(C,N)-LLV(L,N))`） |
+| `volume_price_v3` | 连续 2 日阳线且价格连续创新高；连续 2 日量增；当日涨幅 2%~6%；白线 > 黄线且收盘 ≥ 黄线×0.97；J < 60。评分 = 0.70 基础分 + 涨幅 3~5%（+0.10）+ 量 > 昨日 1.5 倍（+0.10）+ J < 50（+0.10） |
+| `ActiveMarketValueGate` | 0AMV 活跃市值：活筹置换衰减 `A_t = A_{t-1} × 0.92 × (1-换手率_t) + 成交量_t`，指数 `Σ A×close`；**开仓**：单日 ≥ +5%（特别强）/ ≥ +4%（强）/ 连续 2 日合计 ≥ +4% 且窗口内无 ≤ -2.3% 日（一般）/ 连续 3 日合计 ≥ +4% 同条件（较弱）；**关仓**：持仓状态下单日 ≤ -2.3%（次日只卖不买） |
+
+辅助指标（`src/aqlab/indicators_extra.py`）：`rsl`、`kdj`(9,3,3，J=3K-2D)、`amplitude`、`white_line`=EMA(EMA(C,10),10)、`yellow_line`=(MA14+MA28+MA57+MA114)/4。
+
+```bash
+# 用个人档案跑当日流水线（默认 0AMV 开关，dry-run）
+python -m aqlab.cli daily --profile zgnb_full --symbols-count 40 --days 600 --top 10
+
+# 单规则档案
+python -m aqlab.cli daily --profile needle_20      # 或 needle_30 / b1 / b2 / b3 / volume_price_v3
+python -m aqlab.cli daily --profile zgnb_needle30  # 单针下30 + 量价齐升V3 组合
+
+# 参数覆盖 + 切换开关口径
+python -m aqlab.cli daily --profile b1 --rule b1_opportunity.j_max=-15 --gate activity
+python -m aqlab.cli daily --profile zgnb_full --no-gate      # 不启用市场开关
+```
+
+实测输出（合成票池 40 只，dry-run）：
+
+```
+2024-04-19 ｜ 票池 40 只（可用 40 只）｜ 🟢 开关打开（hold）
+- 开关数据口径：turnover: 数据缺少换手率列，按 250 日最大成交量×1.5 估计流通股本
+- 本期仅 3 只标的触发规则（不足 top_n=6）
+规则权重：{'b1_opportunity': 0.25, 'b2_confirm': 0.2, 'b3_confirm': 0.15, 'needle_rsl': 0.15, 'volume_price_v3': 0.25}
+
+| 排名 | 代码 | 收盘 | 综合分 | 触发规则 | b1 | b2 | b3 | needle_rsl | v3 |
+| 1 | SYN009 | 173.01 | 25.0 | b1_opportunity | 1.0 | 0 | 0 | 0 | 0 |
+| 2 | SYN026 | 1079.05 | 20.0 | volume_price_v3 | 0 | 0 | 0 | 0 | 0.8 |
+| 3 | SYN002 | 86.22 | 15.0 | needle_rsl | 0 | 0 | 0 | 1.0 | 0 |
+```
+
+> ⚠️ **数据依赖说明（不隐藏）**：B1 的"累计换手率 < 38%"需要真实换手率（Tushare `daily_basic.turnover_rate`）。数据里没有 `turnover` 列时本项目**跳过**该条件并写进报告备注；0AMV 的换手率缺失时按 `250 日最大成交量×1.5` 估计流通股本——这是估计值，报告里同样会标注。要精确复用请先同步 `daily_basic`。
+
 ## 路线图
 
 - ✅ **v0.2（已完成）LLM / Agent 研究层**：只读工具层（6 个工具，JSON Schema）+ 有界代理循环 + 全步骤 trace + 评测集（含"看起来合理但其实错"的陷阱任务）与落地率/幻觉率/弃答率指标。

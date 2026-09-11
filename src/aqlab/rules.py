@@ -326,9 +326,14 @@ RULES: dict[str, Callable[..., object]] = {
 
 
 def build_rule(name: str, **params: object):
-    if name not in RULES:
-        raise KeyError(f"unknown rule '{name}'; available: {sorted(RULES)}")
-    return RULES[name](**params)
+    """Build a rule from either the generic or the personal rule registry."""
+    if name in RULES:
+        return RULES[name](**params)
+    from aqlab.rules_zgnb import PERSONAL_RULES
+
+    if name in PERSONAL_RULES:
+        return PERSONAL_RULES[name](**params)
+    raise KeyError(f"unknown rule '{name}'; available: {sorted(RULES) + sorted(PERSONAL_RULES)}")
 
 
 DEFAULT_RULE_BINDINGS: list[tuple[str, dict, float]] = [
