@@ -20,6 +20,7 @@ from aqlab.metrics import compute_metrics, format_metrics
 from aqlab.report import write_report
 from aqlab.screen import ScreenConfig, rank_universe
 from aqlab.strategies import STRATEGIES, build_strategy
+from aqlab.tables import markdown_table
 
 DEFAULT_OUT = Path("output")
 
@@ -81,7 +82,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
             "win_rate_trade": "胜率%",
         }
     )
-    print(table.to_markdown(index=False))
+    print(markdown_table(table))
     print(f"\n报告已写入：{out_root / 'demo'}")
     return 0
 
@@ -118,7 +119,7 @@ def cmd_screen(args: argparse.Namespace) -> int:
     view["score"] = view["score"].round(3)
     print(f"截面筛选（合成票池 {len(universe)} 只，按加权因子打分排序）")
     print()
-    print(view.head(args.top).to_markdown(index=False))
+    print(markdown_table(view.head(args.top)))
     if args.out:
         out = Path(args.out) / "screen"
         out.mkdir(parents=True, exist_ok=True)

@@ -17,6 +17,7 @@ from aqlab.data import generate_synthetic_ohlcv, make_universe  # noqa: E402
 from aqlab.metrics import compute_metrics  # noqa: E402
 from aqlab.screen import ScreenConfig, rank_universe  # noqa: E402
 from aqlab.strategies import build_strategy  # noqa: E402
+from aqlab.tables import markdown_table  # noqa: E402
 
 
 def main() -> None:
@@ -40,12 +41,12 @@ def main() -> None:
                 "胜率%": round(metrics.get("win_rate_trade", float("nan")) * 100, 2),
             }
         )
-    print(pd.DataFrame(rows).to_markdown(index=False))
+    print(markdown_table(pd.DataFrame(rows)))
 
     universe = make_universe(n_symbols=30, n_days=500, seed=11)
     ranks = rank_universe(universe, config=ScreenConfig(top_n=10))
     print()
-    print(ranks[["rank", "symbol", "mom_60", "vol_20", "score"]].head(10).round(4).to_markdown(index=False))
+    print(markdown_table(ranks[["rank", "symbol", "mom_60", "vol_20", "score"]].head(10).round(4)))
 
 
 if __name__ == "__main__":

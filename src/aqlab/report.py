@@ -18,6 +18,7 @@ import pandas as pd
 
 from aqlab.backtest import BacktestResult
 from aqlab.metrics import format_metrics
+from aqlab.tables import markdown_table
 
 __all__ = ["format_report", "write_report"]
 
@@ -64,7 +65,7 @@ def format_report(
             head[col] = pd.to_datetime(head[col]).dt.strftime("%Y-%m-%d")
         for col in ("entry_price", "exit_price", "gross_return", "net_return"):
             head[col] = head[col].astype(float).round(4)
-        lines.append(head.to_markdown(index=False))
+        lines.append(markdown_table(head))
         lines.append("")
         if "open" in trades and trades["open"].any():
             lines.append(f"（另有 {int(trades['open'].sum())} 笔持仓未平仓，未计入交易统计）")
