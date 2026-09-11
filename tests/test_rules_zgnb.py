@@ -149,7 +149,7 @@ def test_b2_requires_gain_j_and_volume():
     step1 = closes + [closes[-1] * 1.025, closes[-1] * 1.025 * 1.022]
     volumes = [1000.0] * len(closes) + [1500.0, 2200.0]
     df = frame(step1, volumes=volumes)
-    rule = B2Confirm()
+    rule = B2Confirm(b1_rule="b1_opportunity")  # 用简化版 B1 隔离 B2 自身逻辑
     assert bool(rule.signal(df).iloc[-1]) is True
 
     # not enough gain -> no signal
@@ -165,11 +165,11 @@ def test_b3_requires_doji_after_b2_and_flat_open():
     step2 = step1 + [step1[-1] * 1.004]                      # doji-ish small body
     df = frame(step2, volumes=volumes + [1000.0])            # keep the volume profile of the B2 bar
     df.loc[df.index[-1], "open"] = step1[-1]                 # flat open
-    assert bool(B3Confirm().signal(df).iloc[-1]) is True
+    assert bool(B3Confirm(b2_params={"b1_rule": "b1_opportunity"}).signal(df).iloc[-1]) is True
 
     gapped = df.copy()
     gapped.loc[gapped.index[-1], "open"] = step1[-1] * 1.05  # 高开 5% -> not flat
-    assert bool(B3Confirm(open_tolerance=0.01).signal(gapped).iloc[-1]) is False
+    assert bool(B3Confirm(open_tolerance=0.01, b2_params={"b1_rule": "b1_opportunity"}).signal(gapped).iloc[-1]) is False
 
 
 # --------------------------------------------------------------------------------------
@@ -342,5 +342,9 @@ def test_pipeline_runs_zgnb_profile_end_to_end():
     report = pipeline.run(push=False)
     assert report.gate_state in (0, 1)
     assert set(report.weights) == {rule for rule, _p, _w in PROFILES["zgnb_full"]}
-    for pick in report.picks:
-        assert pick["score"] > 0
+    assert all(pick["score"] >= 0 for pick in report.picks)
+    if any(pick["score"] > 0 for pick in report.picks):
+        assert all(pick["score"] > 0 for pick in report.picks)
+    else:
+        # 没有任何规则触发时，管线如实降级为"观察名单"并写明原因
+        assert any("观察名单" in note or "没有标的触发" in note for note in report.notes)

@@ -219,22 +219,45 @@ ashare-quant-lab/
 
 | 规则 | 命中口径（默认值） |
 | --- | --- |
-| `b1_opportunity` | J ≤ -10；当日涨幅 -2% ~ +1.8%；振幅 ≤ 7%；20 日累计换手 < 38%（有换手率列时启用，缺失则跳过并在报告里说明；`require_turnover=True` 可设为硬性） |
+| `b1_graded` | **B1 梯度打分（5 硬 + 4 软）**：硬性 —— J ≤ 13、近 15 日存在放量日（量 > 前一日×2）、极致缩量（当日量 < 近 15 日最高 / 2.5）、双线多头（白线 > 黄线 且 收盘 ≥ 黄线×0.97，需 ≥114 根）、前 N 低点未破（近 15 日最低 ≥ 近 30 日最低×0.97）；排除近 10 日放量大阴线。软性（各 +10 分）—— 涨跌幅 ∈ [-2%,+1.8%]、振幅 < 4%、盈亏比 ≥ 3（止损=近 15 日最低×0.97，目标=近 15 日最高×1.02）；评分 = 60 + 10×软通过数 |
+| `b1_opportunity` | 简化版（保留兼容）：J ≤ -10；涨幅 -2%~+1.8%；振幅 ≤ 7%；累计换手 < 38%（有换手率列时启用，缺失则跳过并在报告里说明） |
+| `brick_green_to_red` | 砖型图"绿转红"：`XG = 绿转红 AND 视觉红柱 ≥ 昨视觉绿柱 × 0.6667`；评分梯度化（`min(1, 强度比/0.6667)`，满足 XG 给满分） |
+| 砖型过滤门 `brick_filter_mask` | 门 1（入场）：只允许红砖第 1~2 块进；门 2（禁买）：红砖 ≥ 4 块一律禁买（`use_brick_filter=True` 打开） |
 | `b2_confirm` | B1 后 3 个交易日内，涨幅 ≥ 4%，J < 55，且放量（量 > 前一日） |
 | `b3_confirm` | B2 后出现十字星/小阴线（实体 ≤ 2%），且平开（\|开盘/前收-1\| ≤ 1%） |
 | `needle_rsl` | 单针下20：RSL(3) ≤ 20 且 RSL(21) ≥ 80；单针下30：RSL(3) < 30 且 RSL(21) > 85（`RSL(N)=100*(C-LLV(L,N))/(HHV(C,N)-LLV(L,N))`） |
 | `volume_price_v3` | 连续 2 日阳线且价格连续创新高；连续 2 日量增；当日涨幅 2%~6%；白线 > 黄线且收盘 ≥ 黄线×0.97；J < 60。评分 = 0.70 基础分 + 涨幅 3~5%（+0.10）+ 量 > 昨日 1.5 倍（+0.10）+ J < 50（+0.10） |
 | `ActiveMarketValueGate` | 0AMV 活跃市值：活筹置换衰减 `A_t = A_{t-1} × 0.92 × (1-换手率_t) + 成交量_t`，指数 `Σ A×close`；**开仓**：单日 ≥ +5%（特别强）/ ≥ +4%（强）/ 连续 2 日合计 ≥ +4% 且窗口内无 ≤ -2.3% 日（一般）/ 连续 3 日合计 ≥ +4% 同条件（较弱）；**关仓**：持仓状态下单日 ≤ -2.3%（次日只卖不买） |
 
-辅助指标（`src/aqlab/indicators_extra.py`）：`rsl`、`kdj`(9,3,3，J=3K-2D)、`amplitude`、`white_line`=EMA(EMA(C,10),10)、`yellow_line`=(MA14+MA28+MA57+MA114)/4。
+辅助指标（`src/aqlab/indicators_extra.py`）：`rsl`、`kdj`(9,3,3，J=3K-2D)、`amplitude`、`white_line`=EMA(EMA(C,10),10)、`yellow_line`=(MA14+MA28+MA57+MA114)/4、**`sma_tdx`（通达信 `SMA(X,N,M)`）**、**`brick_chart`（砖型图）**。
+
+### 砖型图（按你的公式逐行等价实现）
+
+```
+VAR1A := (HHV(H,4) - C) / (HHV(H,4) - LLV(L,4)) * 100 - 90
+VAR2A := SMA(VAR1A,4,1) + 100
+VAR3A := (C - LLV(L,4)) / (HHV(H,4) - LLV(L,4)) * 100
+VAR4A := SMA(VAR3A,6,1)
+VAR5A := SMA(VAR4A,6,1) + 100
+VAR6A := VAR5A - VAR2A
+砖型图 := IF(VAR6A > 4, VAR6A - 4, 0)
+视觉红柱 := IF(砖型图 > 昨砖型图, 砖型图 - 昨砖型图, 0)
+视觉绿柱 := IF(砖型图 < 昨砖型图, 昨砖型图 - 砖型图, 0)
+绿转红   := 昨视觉绿柱 > 0 AND 视觉红柱 > 0
+强度比   := IF(绿转红, ROUND(视觉红柱 / 昨视觉绿柱, 2), 0)
+XG       := 绿转红 AND 视觉红柱 >= 昨视觉绿柱 * 0.6667
+```
+
+`brick_chart()` 返回全部中间列（`var1a`…`var6a`、`brick`、`red`、`green`、`green_to_red`、`strength_ratio`、`xg`），`brick_streaks()` 再给出**红砖/绿砖连续块数**（红砖第 N 块），供门 1 / 门 2 使用。竖线（红/绿柱）与图标（XG）属于绘图指令，这里不做，值本身完整保留。
 
 ```bash
 # 用个人档案跑当日流水线（默认 0AMV 开关，dry-run）
 python -m aqlab.cli daily --profile zgnb_full --symbols-count 40 --days 600 --top 10
 
 # 单规则档案
-python -m aqlab.cli daily --profile needle_20      # 或 needle_30 / b1 / b2 / b3 / volume_price_v3
+python -m aqlab.cli daily --profile needle_20      # 或 needle_30 / b1 / b1_brick / b2 / b3 / volume_price_v3 / brick_green_to_red
 python -m aqlab.cli daily --profile zgnb_needle30  # 单针下30 + 量价齐升V3 组合
+python -m aqlab.cli daily --profile zgnb_brick     # B1(带砖型过滤) + 绿转红 + V3 + 单针下20
 
 # 参数覆盖 + 切换开关口径
 python -m aqlab.cli daily --profile b1 --rule b1_opportunity.j_max=-15 --gate activity

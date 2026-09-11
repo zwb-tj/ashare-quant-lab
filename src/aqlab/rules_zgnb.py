@@ -6,7 +6,9 @@ research (thresholds are configuration, not hard-coded magic):
 =====================  ==========================================================
 规则                    口径
 =====================  ==========================================================
-``B1Opportunity``      J ≤ -10；当日涨幅 -2%~+1.8%；振幅 ≤ 7%；累计换手 < 38%（有换手率数据时）
+``B1Graded``           B1 梯度打分：J ≤ 13、近15日有放量日、极致缩量、双线多头、前N低点未破，
+                       再按 4 条软性条件加分（60 + 10×软通过数）
+``B1Opportunity``      简化版 B1：J ≤ -10、涨幅 -2%~+1.8%、振幅 ≤ 7%、累计换手 < 38%（保留兼容）
 ``B2Confirm``          B1 后 3 个交易日内，涨幅 ≥ 4%，J < 55，且放量（量 > 前一日）
 ``B3Confirm``          B2 后出现十字星/小阴线，且平开（开盘价 ≈ 前收）
 ``NeedleRSL``          单针下20：RSL(3) ≤ 20 且 RSL(21) ≥ 80；单针下30：RSL(3) < 30 且 RSL(21) > 85
@@ -27,14 +29,27 @@ from typing import Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from aqlab.indicators_extra import amplitude, kdj, ma, pct_change_1d, rsl, white_line, yellow_line
+from aqlab.indicators_extra import (
+    amplitude,
+    brick_chart,
+    brick_streaks,
+    kdj,
+    ma,
+    pct_change_1d,
+    rsl,
+    white_line,
+    yellow_line,
+)
 
 __all__ = [
     "B1Opportunity",
+    "B1Graded",
     "B2Confirm",
     "B3Confirm",
     "NeedleRSL",
     "VolumePriceV3",
+    "BrickGreenToRed",
+    "brick_filter_mask",
     "ActiveMarketValueGate",
     "PERSONAL_RULES",
     "build_personal_rule",
@@ -116,6 +131,203 @@ class B1Opportunity:
         return _clean(self.signal(df).astype(float), df.index)
 
 
+class B1Graded:
+    """B1 梯度打分（5 硬性条件 + 4 软性加分）。
+
+    硬性条件（任一不满足 → 0 分）::
+
+        硬1  J ≤ 13（超卖区，越低越好；注意不是 -10）
+        硬2  近 15 日内存在放量日（成交量 > 前一日 × 2，"有人玩过"）
+        硬3  极致缩量：当日成交量 < 近 15 日最高成交量 / 2.5
+        硬4  双线多头：白线 > 黄线 且 收盘 ≥ 黄线 × 0.97（需 ≥114 根 K 线）
+        硬5  前 N 低点未破：近 15 日最低 ≥ 近 30 日最低 × 0.97
+        排除 S1：近 10 日内出现放量大阴线（跌幅 < -3% 且量 > 前一日 × 1.5）
+
+    软性加分（每个 +10 分）::
+
+        软6  涨跌幅 ∈ [-2%, +1.8%]（小阴小阳）
+        软7  振幅 < 4%（(high-low)/low）
+        软8  盈亏比 ≥ 3（止损=近15日最低×0.97，目标=近15日最高×1.02）
+        软9  双30原则（原始规则中搁置，不计分）
+
+    评分：硬性全过 = 60 分基础分 + 10 × 软性通过数（上限 100）→ 规则输出 /100。
+    """
+
+    name = "b1_graded"
+
+    def __init__(
+        self,
+        j_max: float = 13.0,
+        spike_lookback: int = 15,
+        spike_multiple: float = 2.0,
+        shrink_divisor: float = 2.5,
+        yellow_buffer: float = 0.97,
+        prev_low_buffer: float = 0.97,
+        amplitude_max: float = 4.0,
+        rr_min: float = 3.0,
+        s1_lookback: int = 10,
+        s1_pct: float = -3.0,
+        s1_vol_multiple: float = 1.5,
+        require_double_line: bool = True,
+        min_history: int = 30,
+        use_brick_filter: bool = False,
+        brick_entry_max: int = 2,
+        brick_block: int = 4,
+    ) -> None:
+        self.params = {
+            "j_max": j_max,
+            "spike_lookback": spike_lookback,
+            "spike_multiple": spike_multiple,
+            "shrink_divisor": shrink_divisor,
+            "yellow_buffer": yellow_buffer,
+            "prev_low_buffer": prev_low_buffer,
+            "amplitude_max": amplitude_max,
+            "rr_min": rr_min,
+            "s1_lookback": s1_lookback,
+            "s1_pct": s1_pct,
+            "s1_vol_multiple": s1_vol_multiple,
+            "require_double_line": require_double_line,
+            "min_history": min_history,
+            "use_brick_filter": use_brick_filter,
+            "brick_entry_max": brick_entry_max,
+            "brick_block": brick_block,
+        }
+
+    # -- hard / soft conditions ----------------------------------------------------
+    def _conditions(self, df: pd.DataFrame) -> pd.DataFrame:
+        close = df["close"].astype(float)
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+        volume = df["volume"].astype(float)
+        pct = pct_change_1d(df) * 100.0
+
+        look = int(self.params["spike_lookback"])
+        j = kdj(df)["j"]
+        white = white_line(df)
+        yellow = yellow_line(df)
+
+        vol_max_look = volume.rolling(look, min_periods=1).max()
+        spike = volume > volume.shift(1) * self.params["spike_multiple"]
+        bear_volume = (pct < self.params["s1_pct"]) & (volume > volume.shift(1) * self.params["s1_vol_multiple"])
+
+        min_low_look = low.rolling(look, min_periods=1).min()
+        min_low_prev = low.rolling(2 * look, min_periods=1).min()
+        max_high_look = high.rolling(look, min_periods=1).max()
+
+        hard = pd.DataFrame(index=df.index)
+        hard["hard1_j"] = j <= self.params["j_max"]
+        hard["hard2_spike"] = spike.rolling(look, min_periods=1).max().fillna(0).astype(bool)
+        hard["hard3_shrink"] = volume < vol_max_look / self.params["shrink_divisor"]
+        if self.params["require_double_line"]:
+            hard["hard4_double_line"] = (white > yellow) & (close >= yellow * self.params["yellow_buffer"]) & yellow.notna()
+        else:
+            hard["hard4_double_line"] = pd.Series(True, index=df.index)
+        hard["hard5_prev_low"] = min_low_look >= min_low_prev * self.params["prev_low_buffer"]
+        hard["s1_excluded"] = ~bear_volume.rolling(int(self.params["s1_lookback"]), min_periods=1).max().fillna(0).astype(bool)
+
+        stop_loss = min_low_look * self.params["prev_low_buffer"]
+        target = max_high_look * 1.02
+        risk = close - stop_loss
+        reward = target - close
+        rr = (reward / risk).where(risk > 0, np.nan).fillna(0.0)
+
+        soft = pd.DataFrame(index=df.index)
+        soft["soft6_small_candle"] = pct.between(-2.0, 1.8)
+        soft["soft7_low_amplitude"] = ((high - low) / low.replace(0.0, np.nan)) * 100.0 < self.params["amplitude_max"]
+        soft["soft8_risk_reward"] = rr >= self.params["rr_min"]
+        soft["soft9_double_thirty"] = False  # 原始规则中搁置
+
+        return hard, soft, rr
+
+    def detail(self, df: pd.DataFrame) -> dict:
+        """最后一根 K 线的条件明细（用于报告与排查，不参与评分）。"""
+        if len(df) < self.params["min_history"]:
+            return {"score": 0.0, "hard": {}, "soft": {}, "hard_all": False, "note": "数据不足"}
+        hard, soft, rr = self._conditions(df)
+        hard_last = {k: bool(v.iloc[-1]) for k, v in hard.items()}
+        soft_last = {k: bool(v.iloc[-1]) for k, v in soft.items()}
+        hard_all = all(hard_last.values())
+        soft_pass = sum(1 for k, v in soft_last.items() if v and not k.startswith("soft9"))
+        return {
+            "score": (60 + 10 * soft_pass) / 100.0 if hard_all else 0.0,
+            "hard": hard_last,
+            "soft": soft_last,
+            "hard_all": hard_all,
+            "soft_pass": soft_pass,
+            "risk_reward": float(rr.iloc[-1]) if len(rr) else 0.0,
+        }
+
+    # -- rule interface ------------------------------------------------------------
+    def signal(self, df: pd.DataFrame) -> pd.Series:
+        if len(df) < self.params["min_history"]:
+            return pd.Series(False, index=df.index)
+        hard, _soft, _rr = self._conditions(df)
+        out = hard.all(axis=1)
+        if self.params["use_brick_filter"]:
+            out = out & brick_filter_mask(
+                df, entry_max=self.params["brick_entry_max"], block=self.params["brick_block"]
+            )
+        return _to_bool(out)
+
+    def score(self, df: pd.DataFrame) -> pd.Series:
+        if len(df) < self.params["min_history"]:
+            return pd.Series(0.0, index=df.index)
+        hard, soft, _rr = self._conditions(df)
+        hard_all = hard.all(axis=1)
+        soft_pass = soft[[c for c in soft.columns if not c.startswith("soft9")]].sum(axis=1)
+        score = ((60.0 + 10.0 * soft_pass) / 100.0).where(hard_all, 0.0)
+        if self.params["use_brick_filter"]:
+            allowed = brick_filter_mask(df, entry_max=self.params["brick_entry_max"], block=self.params["brick_block"])
+            score = score.where(allowed, 0.0)
+        return _clean(score, df.index)
+
+
+def brick_filter_mask(df: pd.DataFrame, entry_max: int = 2, block: int = 4) -> pd.Series:
+    """砖型图过滤门（来自你原来的门 1 / 门 2 口径）。
+
+    * 门 1（入场）：只允许"红砖第 1~``entry_max`` 块"的位置进（默认 ≤2）
+    * 门 2（禁买）：红砖 ≥ ``block`` 块（默认 4）一律禁买
+
+    返回布尔序列：``True`` = 允许。
+    """
+    if entry_max < 1 or block < 1:
+        raise ValueError("entry_max and block must be >= 1")
+    chart = brick_streaks(brick_chart(df))
+    red = chart["red_streak"]
+    return _to_bool((red <= entry_max) & (red < block))
+
+
+class BrickGreenToRed:
+    """砖型图"绿转红"信号（你给的公式）：
+
+    ``XG = 绿转红 AND 视觉红柱 >= 昨视觉绿柱 × 0.6667``
+
+    评分做梯度化：``绿转红`` 成立时给 ``min(1, 强度比 / 0.6667)``，满足 XG 阈值给 1.0，
+    这样"刚绿转红但强度不够"也能拿到部分分数，便于排序而不是非黑即白。
+    """
+
+    name = "brick_green_to_red"
+
+    def __init__(self, ratio_threshold: float = 0.6667, require_green_to_red: bool = True) -> None:
+        if ratio_threshold <= 0:
+            raise ValueError("ratio_threshold must be > 0")
+        self.params = {"ratio_threshold": ratio_threshold, "require_green_to_red": require_green_to_red}
+
+    def chart(self, df: pd.DataFrame) -> pd.DataFrame:
+        return brick_streaks(brick_chart(df))
+
+    def signal(self, df: pd.DataFrame) -> pd.Series:
+        return _to_bool(self.chart(df)["xg"])
+
+    def score(self, df: pd.DataFrame) -> pd.Series:
+        chart = self.chart(df)
+        ratio = chart["strength_ratio"].astype(float)
+        graded = (ratio / self.params["ratio_threshold"]).clip(upper=1.0)
+        if self.params["require_green_to_red"]:
+            graded = graded.where(chart["green_to_red"], 0.0)
+        return _clean(graded, df.index)
+
+
 class B2Confirm:
     """B2 确认：B1 之后的放量上攻。
 
@@ -126,7 +338,7 @@ class B2Confirm:
 
     name = "b2_confirm"
 
-    def __init__(self, b1_window: int = 3, min_gain: float = 0.04, j_max: float = 55.0, require_volume_up: bool = True, b1_params: Mapping | None = None) -> None:
+    def __init__(self, b1_window: int = 3, min_gain: float = 0.04, j_max: float = 55.0, require_volume_up: bool = True, b1_params: Mapping | None = None, b1_rule: str = "b1_graded") -> None:
         if b1_window < 1:
             raise ValueError("b1_window must be >= 1")
         self.params = {
@@ -134,8 +346,15 @@ class B2Confirm:
             "min_gain": min_gain,
             "j_max": j_max,
             "require_volume_up": require_volume_up,
+            "b1_rule": b1_rule,
         }
-        self._b1 = B1Opportunity(**dict(b1_params or {}))
+        params = dict(b1_params or {})
+        if b1_rule == "b1_graded":
+            self._b1 = B1Graded(**params)
+        elif b1_rule == "b1_opportunity":
+            self._b1 = B1Opportunity(**params)
+        else:
+            raise KeyError(f"unknown b1 rule '{b1_rule}'")
 
     def signal(self, df: pd.DataFrame) -> pd.Series:
         b1 = self._b1.signal(df)
@@ -487,10 +706,12 @@ class ActiveMarketValueGate:
 
 PERSONAL_RULES = {
     B1Opportunity.name: B1Opportunity,
+    B1Graded.name: B1Graded,
     B2Confirm.name: B2Confirm,
     B3Confirm.name: B3Confirm,
     NeedleRSL.name: NeedleRSL,
     VolumePriceV3.name: VolumePriceV3,
+    BrickGreenToRed.name: BrickGreenToRed,
 }
 
 

@@ -21,18 +21,27 @@ __all__ = ["PROFILES", "load_profile", "list_profiles", "build_gate", "GATES"]
 
 PROFILES: dict[str, list[tuple[str, dict[str, Any], float]]] = {
     "generic": list(DEFAULT_RULE_BINDINGS),
-    "b1": [("b1_opportunity", {}, 1.0)],
+    "b1": [("b1_graded", {}, 1.0)],
+    "b1_simple": [("b1_opportunity", {}, 1.0)],
+    "b1_brick": [("b1_graded", {"use_brick_filter": True}, 1.0)],
     "b2": [("b2_confirm", {}, 1.0)],
     "b3": [("b3_confirm", {}, 1.0)],
     "needle_20": [("needle_rsl", {"short_max": 20.0, "long_min": 80.0}, 1.0)],
     "needle_30": [("needle_rsl", {"short_max": 30.0, "long_min": 85.0, "long_strict": True}, 1.0)],
     "volume_price_v3": [("volume_price_v3", {}, 1.0)],
+    "brick_green_to_red": [("brick_green_to_red", {}, 1.0)],
     "zgnb_full": [
-        ("b1_opportunity", {}, 0.25),
+        ("b1_graded", {}, 0.25),
         ("b2_confirm", {}, 0.20),
         ("b3_confirm", {}, 0.15),
         ("needle_rsl", {"short_max": 20.0, "long_min": 80.0}, 0.15),
         ("volume_price_v3", {}, 0.25),
+    ],
+    "zgnb_brick": [
+        ("b1_graded", {"use_brick_filter": True}, 0.30),
+        ("brick_green_to_red", {}, 0.25),
+        ("volume_price_v3", {}, 0.25),
+        ("needle_rsl", {"short_max": 20.0, "long_min": 80.0}, 0.20),
     ],
     "zgnb_needle30": [
         ("needle_rsl", {"short_max": 30.0, "long_min": 85.0, "long_strict": True}, 0.6),
