@@ -200,6 +200,75 @@ def cmd_agent(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_rule_overrides(bindings, overrides):
+    """Apply ``--rule rule.param=value`` overrides onto the default bindings."""
+    updated = [(name, dict(params), weight) for name, params, weight in bindings]
+    index = {name: i for i, (name, _p, _w) in enumerate(updated)}
+    for item in overrides or []:
+        if "." not in item or "=" not in item:
+            raise SystemExit(f"bad --rule '{item}', expected rule_name.param=value")
+        target, value = item.split("=", 1)
+        rule_name, param = target.split(".", 1)
+        if rule_name not in index:
+            raise SystemExit(f"unknown rule '{rule_name}'; available: {sorted(index)}")
+        try:
+            parsed: object = int(value)
+        except ValueError:
+            try:
+                parsed = float(value)
+            except ValueError:
+                parsed = value
+        name, params, weight = updated[index[rule_name]]
+        params[param] = parsed
+        updated[index[rule_name]] = (name, params, weight)
+    return updated
+
+
+def cmd_daily(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from aqlab.notify import FeishuWebhookNotifier
+    from aqlab.pipeline import DailyConfig, DailyPipeline, render_markdown, write_daily_report
+    from aqlab.rules import DEFAULT_RULE_BINDINGS, ActivityValueGate
+    from aqlab.tools import CsvDataSource, SyntheticDataSource
+
+    if args.tushare:
+        from aqlab.data import TushareDataSource
+
+        if not args.symbols:
+            print("--tushare 需要同时提供 --symbols 600519.SH,000001.SZ", file=sys.stderr)
+            return 2
+        source = TushareDataSource(
+            symbols=[s.strip() for s in args.symbols.split(",") if s.strip()],
+            start=args.start or "2020-01-01",
+            end=args.end or args.date or str(pd.Timestamp.today().date()),
+        )
+    elif args.data_dir:
+        source = CsvDataSource(args.data_dir)
+    else:
+        source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
+
+    bindings = _apply_rule_overrides(DEFAULT_RULE_BINDINGS, args.rule)
+    pipeline = DailyPipeline(
+        source=source,
+        rule_bindings=bindings,
+        gate=ActivityValueGate() if not args.no_gate else None,
+        config=DailyConfig(top_n=args.top, as_of=args.date, use_gate=not args.no_gate),
+        notifier=FeishuWebhookNotifier(webhook_url=args.webhook, dry_run=not args.push),
+    )
+    report = pipeline.run(push=True)
+    print(render_markdown(report))
+
+    paths = write_daily_report(Path(args.out) / "daily", report)
+    print(f"\n报告已写入：{paths['markdown']}")
+    if report.notifier_result:
+        status = "已发送" if report.notifier_result["ok"] else "发送失败"
+        print(f"推送：{status}（{report.notifier_result['channel']}）{report.notifier_result['detail']}")
+    if not args.push:
+        print("提示：默认 dry-run；要真正推送到飞书请加 --push 并配置 FEISHU_WEBHOOK。")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -254,6 +323,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_agent.add_argument("--max-steps", type=int, default=6)
     p_agent.add_argument("--trace", default=None, help="path to write the full step trace as JSON")
     p_agent.set_defaults(func=cmd_agent)
+
+    p_daily = sub.add_parser("daily", help="daily scoring pipeline (synthetic/CSV/tushare) with optional Feishu push")
+    p_daily.add_argument("--date", default=None, help="as-of date (YYYY-MM-DD); default = latest bar")
+    p_daily.add_argument("--top", type=int, default=10)
+    p_daily.add_argument("--data-dir", default=None, help="CSV directory as data source")
+    p_daily.add_argument("--tushare", action="store_true", help="use Tushare (needs TUSHARE_TOKEN + --symbols)")
+    p_daily.add_argument("--symbols", default=None, help="comma separated symbols for --tushare")
+    p_daily.add_argument("--start", default=None)
+    p_daily.add_argument("--end", default=None)
+    p_daily.add_argument("--rule", action="append", default=None, help="override e.g. --rule needle_below_ma.ma_window=30")
+    p_daily.add_argument("--no-gate", action="store_true", help="disable the activity-value market gate")
+    p_daily.add_argument("--push", action="store_true", help="really push to Feishu (default is dry-run)")
+    p_daily.add_argument("--webhook", default=None, help="Feishu webhook URL (falls back to FEISHU_WEBHOOK)")
+    p_daily.add_argument("--symbols-count", type=int, default=30, help="synthetic universe size when no data source is given")
+    p_daily.add_argument("--days", type=int, default=500)
+    p_daily.add_argument("--seed", type=int, default=11)
+    p_daily.add_argument("--out", default=str(DEFAULT_OUT))
+    p_daily.set_defaults(func=cmd_daily)
     return parser
 
 

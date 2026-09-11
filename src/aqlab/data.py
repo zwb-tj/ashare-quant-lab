@@ -181,3 +181,74 @@ def fetch_akshare(symbol: str, start: str, end: str, adjust: str = "qfq") -> pd.
     rename = {"日期": "date", "开盘": "open", "最高": "high", "最低": "low", "收盘": "close", "成交量": "volume"}
     df = df.rename(columns=rename)
     return normalize_ohlcv(df)
+
+
+class TushareDataSource:
+    """A cached Tushare-backed data source for the daily pipeline.
+
+    Behaviour that matters for a scheduled job:
+
+    * every symbol is cached as CSV under ``cache_dir`` (so a rerun or a network
+      outage never loses yesterday's data);
+    * if a fetch fails **and** a cache exists, the cached frame is used and
+      ``self.degraded`` becomes ``True`` with ``self.last_error`` set — the daily
+      report can then say "数据降级" instead of silently pretending everything is fine;
+    * ``fetch_fn`` is injectable, which keeps the whole class testable offline.
+    """
+
+    def __init__(
+        self,
+        symbols,
+        start: str,
+        end: str,
+        token: str | None = None,
+        cache_dir: str | os.PathLike = "data/raw",
+        fetch_fn=None,
+    ) -> None:
+        self._symbols = [str(s) for s in symbols]
+        if not self._symbols:
+            raise ValueError("symbols must not be empty")
+        self.start = start
+        self.end = end
+        self.token = token
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._fetch = fetch_fn or fetch_tushare
+        self.degraded = False
+        self.last_error: str | None = None
+        self._cache: dict[str, pd.DataFrame] = {}
+
+    def symbols(self) -> list[str]:
+        return list(self._symbols)
+
+    def _cache_path(self, symbol: str) -> Path:
+        return self.cache_dir / f"{symbol.replace('.', '_')}.csv"
+
+    def bars(self, symbol: str) -> pd.DataFrame:
+        if symbol in self._cache:
+            return self._cache[symbol]
+        path = self._cache_path(symbol)
+        if path.exists():
+            df = load_ohlcv_csv(path)
+            self._cache[symbol] = df
+            return df
+        try:
+            df = self._fetch(symbol, self.start, self.end, token=self.token)
+        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+            self.last_error = f"{symbol}: {type(exc).__name__}: {exc}"
+            self.degraded = True
+            raise KeyError(f"无法获取 {symbol} 且无本地缓存（{self.last_error}）") from exc
+        df.to_csv(path, encoding="utf-8-sig")
+        self._cache[symbol] = df
+        return df
+
+    def describe(self) -> dict:
+        return {
+            "source": "tushare",
+            "symbols": self.symbols(),
+            "start": self.start,
+            "end": self.end,
+            "cache_dir": str(self.cache_dir),
+            "cached": sorted(p.stem for p in self.cache_dir.glob("*.csv"))[:20],
+        }
+

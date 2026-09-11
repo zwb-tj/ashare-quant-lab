@@ -128,23 +128,86 @@ python -m aqlab.cli agent --question "用 ma_cross(10,30) 回测 SYN001，给我
 | 可解释 | 筛选分数 = 因子横截面 z-score 的加权和，权重写在 `DEFAULT_WEIGHTS` 里，不藏黑箱 |
 | 失败要早 | 参数校验放在 `Strategy.validate()` / `BacktestConfig.__post_init__`，错误信息直接指出问题 |
 
+## 每日流水线：17:30 打分 → 飞书推送（v0.3）
+
+```bash
+# 默认 dry-run（合成数据验证流程，不推送）
+python -m aqlab.cli daily --symbols-count 30 --days 500 --top 8
+
+# 用本地 CSV 目录当数据源
+python -m aqlab.cli daily --data-dir data/raw --top 10
+
+# 真实数据 + 真推送（需要 TUSHARE_TOKEN 与 FEISHU_WEBHOOK）
+set TUSHARE_TOKEN=xxxx
+set FEISHU_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/xxxx
+python -m aqlab.cli daily --tushare --symbols 600519.SH,000001.SZ,300750.SZ --start 2023-01-01 --push
+
+# 覆盖规则参数（如把单针的均线换成 30、量价齐升改成 3 日确认）
+python -m aqlab.cli daily --rule needle_below_ma.ma_window=30 --rule volume_price_surge.confirm_days=3
+
+# Windows 定时任务：每周一至周五 17:30 自动跑 + 真实推送
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
+powershell -ExecutionPolicy Bypass -File scripts\run_daily.ps1 -DryRun   # 先试跑
+```
+
+**流程与产物**
+
+```
+17:30 ──► 数据源（tushare / 本地 CSV / 合成）
+            │  每只票缓存为 CSV（断网/复跑不会丢昨天的数据；取数失败但有缓存 → 用缓存并标记降级）
+            ▼
+        活跃市值开关（可选，滞回开关：快线≥慢线+on 开；≤慢线+off 关；中间保持）
+            ▼
+        逐票逐规则打分 ─► 加权综合分（默认 0.4/0.3/0.3）─► 横截面排名
+            ▼
+        output/daily/daily-YYYY-MM-DD.md + .json   ──►  飞书卡片（不签名自定义机器人）
+```
+
+**规则是插件，阈值是配置**。仓库里实现的是通用形态 + 中性命名；你自己的参数（均线、档位、放大倍数、确认天数、开关阈值）通过配置传进去即可：
+
+| 通用规则 | 实现要点 | 可对应的买方概念 |
+| --- | --- | --- |
+| `tiered_pullback` | 回踩均线买点，按"下影扎入均线的深度"分档打分（tiers/tier_scores 可配 3 档或更多） | B1 / B2 / B3 这类分档买点 |
+| `needle_below_ma` | 单针下探均线后收回：长下影 + 收盘站回均线上方（`ma_window` 可设 20 / 30） | 单针下 20 / 单针下 30 |
+| `volume_price_surge` | 量价齐升：涨幅达标 + 放量，`confirm_days=1` 为单日、`=3` 为三日确认 | 量价齐升 V1 / V3 |
+| `ActivityValueGate` | 活跃市值开关：`Σ(close×volume)` 的双均线 + 滞回开关（on/off 阈值分离） | 0AMV 活跃市值 + 开关规则 |
+
+> 公开仓库里刻意使用**中性命名**（`tiered_pullback` / `needle_below_ma` / `volume_price_surge` / `ActivityValueGate`）：规则逻辑与阈值是你自己的配置，命名与描述也建议用你自己的说法，避免把仓库绑到任何人的品牌或课程内容上。
+
+**本期实测输出（dry-run，合成票池，交易日 2023-12-01）**
+
+```
+票池 30 只 ｜ 🔴 活跃市值开关关闭（不产生新买点）
+规则权重：{'tiered_pullback': 0.4, 'needle_below_ma': 0.3, 'volume_price_surge': 0.3}
+
+| 排名 | 代码 | 收盘 | 综合分 | 触发规则 | tiered_pullback | needle_below_ma | volume_price_surge |
+| 1 | SYN028 | 1145.68 | 40.1 | tiered_pullback、needle_below_ma | 1.0 | 0.0034 | 0.0 |
+| 2 | SYN029 |  531.19 | 40.0 | tiered_pullback                  | 1.0 | 0.0    | 0.0 |
+```
+
+行为约定（都是有测试的）：**综合分为 0 的标的不会被列进"选股"**（不足 top_n 就如实写"本期仅 N 只触发"）；开关关闭时仍输出观察名单，但明确标注"不产生新买点"。
+
 ## 目录结构
 
 ```
 ashare-quant-lab/
 ├── src/aqlab/
-│   ├── data.py          # 数据归一化（含中文列名）、确定性合成行情、可选 tushare/akshare 抓取
+│   ├── data.py          # 数据归一化（含中文列名）、确定性合成行情、tushare/akshare 抓取与缓存
 │   ├── indicators.py    # SMA/EMA/RSI/ATR/Donchian/z-score/波动率（全部因果）
 │   ├── strategies.py    # 内置策略 + 注册表 + 工厂
 │   ├── backtest.py      # 执行引擎（延迟、成本、仓位裁剪）、交易流水提取、组合聚合
 │   ├── metrics.py       # 收益/年化/波动/Sharpe/Sortino/回撤/Calmar/换手/胜率
 │   ├── screen.py        # 横截面因子表与加权打分排序
+│   ├── rules.py         # 打分规则插件 + 活跃市值滞回开关
+│   ├── pipeline.py      # 每日流水线：取数 → 开关 → 打分 → 排名 → 报告 → 推送
+│   ├── notify.py        # 飞书卡片 / 控制台 dry-run 通知
 │   ├── report.py        # markdown 报告 + metrics.json + equity.csv + trades.csv
 │   ├── tools.py         # 只读工具层（JSON Schema，错误以 ok=false 返回）
 │   ├── agent.py         # 有界 plan-act-observe 代理循环 + trace + 两种 LLM 客户端
 │   ├── evaluation.py    # 评测集与指标：落地率/幻觉/弃答/回归一致性
-│   └── cli.py           # demo / run / screen / fetch / eval / agent
-├── tests/               # 60 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测
+│   └── cli.py           # demo / run / screen / fetch / eval / agent / daily
+├── scripts/             # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
+├── tests/               # 87 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、流水线、通知
 ├── examples/            # 离线 demo 脚本 + 示例报告
 ├── docs/                # 架构说明与路线图
 └── .github/workflows/   # CI：多 Python 版本跑 pytest
@@ -153,9 +216,10 @@ ashare-quant-lab/
 ## 路线图
 
 - ✅ **v0.2（已完成）LLM / Agent 研究层**：只读工具层（6 个工具，JSON Schema）+ 有界代理循环 + 全步骤 trace + 评测集（含"看起来合理但其实错"的陷阱任务）与落地率/幻觉率/弃答率指标。
-- **v0.3** 组合层：权重优化、行业/风格暴露、换手约束。
-- **v0.4** 数据质量：缺口/停牌/复权一致性检查，多源交叉校验。
-- **v0.5** 可视化报告：净值/回撤/因子贡献图。
+- ✅ **v0.3（已完成）每日流水线**：规则插件化（回踩分档 / 单针下均线 / 量价齐升）+ 活跃市值滞回开关 + tushare 取数与本地缓存（断网降级）+ 飞书卡片推送 + Windows 17:30 计划任务 + 全链路离线测试。
+- **v0.4** 组合层：权重优化、行业/风格暴露、换手约束。
+- **v0.5** 数据质量：缺口/停牌/复权一致性检查，多源交叉校验。
+- **v0.6** 可视化报告：净值/回撤/因子贡献图。
 
 详见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
