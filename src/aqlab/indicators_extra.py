@@ -16,7 +16,18 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-__all__ = ["rsl", "kdj", "amplitude", "pct_change_1d", "white_line", "yellow_line", "ma", "sma_tdx", "brick_chart"]
+__all__ = [
+    "rsl",
+    "kdj",
+    "amplitude",
+    "pct_change_1d",
+    "white_line",
+    "yellow_line",
+    "bbi_line",
+    "ma",
+    "sma_tdx",
+    "brick_chart",
+]
 
 
 def ma(series: pd.Series, window: int) -> pd.Series:
@@ -93,6 +104,12 @@ def white_line(df: pd.DataFrame, window: int = 10) -> pd.Series:
 
 def yellow_line(df: pd.DataFrame, windows: tuple[int, ...] = (14, 28, 57, 114)) -> pd.Series:
     """大哥线（黄线）: average of several long moving averages."""
+    close = df["close"].astype(float)
+    return sum(ma(close, w) for w in windows) / len(windows)
+
+
+def bbi_line(df: pd.DataFrame, windows: tuple[int, ...] = (3, 6, 12, 24)) -> pd.Series:
+    """BBI 多空指数: ``(MA3 + MA6 + MA12 + MA24) / 4``（离场判断用）。"""
     close = df["close"].astype(float)
     return sum(ma(close, w) for w in windows) / len(windows)
 

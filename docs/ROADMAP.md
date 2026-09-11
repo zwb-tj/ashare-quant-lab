@@ -85,6 +85,28 @@
 4. **档案** — 新增 `b1`（= b1_graded）、`b1_simple`、`b1_brick`、`brick_green_to_red`、`zgnb_brick`；`zgnb_full` 改用 `b1_graded`；`B2Confirm` 默认以梯度 B1 作为前置信号（可切换 `b1_rule="b1_opportunity"`）。
 5. **测试** — 新增 10 个用例（SMA 手算校验、砖型图恒等式与无未来函数、XG 触发、红砖门、B1 五硬条件与软性加分、S1 排除、档案注册）；全套 **124** 个用例离线通过。
 
+## v0.4.2 · 规则事件研究（✅ 已完成，2026-09）
+
+**目标**：让"规则有效"变成可复核的统计，而不是口头结论。
+
+- `src/aqlab/study.py`：`forward_returns`（未来 N 日收益，纯因果）、`rule_event_study`（单规则逐 horizon 统计）、`baseline_stats`（票池所有 bar 的基线）、`study_profile`（档案级对比，输出超额均值/超额胜率）、`format_study` / `write_study`。
+- CLI：`aqlab study --profile zgnb_full --horizons 1,3,5,10`，产物 `output/study/study.md + study.csv + baseline.csv + study.json`。
+- 实测（合成票池 40 只 / 600 天）：`needle_rsl` 全 horizon 正超额（1 日 +0.17pp / 3 日 +6.4pp 胜率）；`b1_graded` 1 日跑输基线、5 日打平（结构型买点，非短线信号）；`b2_confirm`/`b3_confirm` 零触发（提示前置 B1 过严）。**表里照实显示**，不挑选好看的结论。
+- 测试：9 个新用例（手算校验的未来收益、桩规则事件研究、基线池化、确定性、零信号规则、产物落盘）。
+
+## v0.4.3 · 持仓与离场管理（✅ 已完成，2026-09）
+
+**目标**：把"买了之后怎么办"从经验变成可执行、可回测的规则。
+
+- `src/aqlab/position.py`：
+  - `plan_position()` —— 结构止损（参考低点下浮 3~5%，不宽于 -5%）+ 三档目标（+3%/+5%/+15%）+ 盈亏比 + **3-2-2 建仓阵型**；
+  - `defend_score()` —— **防卖飞评分（5 分制）**：收盘涨 / 未破 BBI / 非放量阴线 / 趋势向上 / J 未死叉 → 4-5 持有、3 减半、<3 准备离场；
+  - `simulate_exit()` —— 按风控优先级执行：硬止损 → 结构止损 → 脱离成本止损 → +3% 减半 → BBI 两日破位 → 波段目标 → 时间止损；
+  - `simulate_signals()` —— 任意信号序列 → 完整交易清单（信号次日收盘入场，无未来函数）。
+- CLI：`aqlab plan --symbol SYN001`（输出交易计划 + 近 5 根防卖飞评分）。
+- 指标层新增 `bbi_line`（(MA3+MA6+MA12+MA24)/4）。
+- 测试：12 个新用例（结构止损/硬止损/减半+波段/脱离成本/BBI 两日破位/时间止损两条路径/防卖飞评分降级/信号次日入场/参数校验）。
+
 ## v0.5 · 组合层
 - 权重优化（风险平价 / 均值方差 + 收缩估计）
 - 行业与风格暴露、换手约束

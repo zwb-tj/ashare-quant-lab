@@ -273,6 +273,66 @@ def cmd_daily(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_study(args: argparse.Namespace) -> int:
+    from aqlab.profiles import load_profile
+    from aqlab.rules import DEFAULT_RULE_BINDINGS
+    from aqlab.study import format_study, study_profile, write_study
+    from aqlab.tools import CsvDataSource, SyntheticDataSource
+
+    if args.data_dir:
+        source = CsvDataSource(args.data_dir)
+    else:
+        source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
+
+    universe = {sym: source.bars(sym) for sym in source.symbols()}
+    bindings = load_profile(args.profile) if args.profile else list(DEFAULT_RULE_BINDINGS)
+    horizons = tuple(int(h) for h in args.horizons.split(",") if h.strip())
+    table, baseline = study_profile(universe, bindings, horizons=horizons, min_history=args.min_history)
+    print(format_study(table))
+
+    if args.out:
+        paths = write_study(
+            Path(args.out) / "study",
+            table,
+            baseline,
+            meta={"profile": args.profile or "generic", "symbols": len(universe), "horizons": list(horizons)},
+        )
+        print(f"\n报告已写入：{paths['markdown']}")
+    return 0
+
+
+def cmd_plan(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from aqlab.position import PositionConfig, defend_score, plan_position
+    from aqlab.tables import markdown_table
+    from aqlab.tools import CsvDataSource, SyntheticDataSource
+
+    if args.data_dir:
+        source = CsvDataSource(args.data_dir)
+    else:
+        source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
+
+    symbol = args.symbol or source.symbols()[0]
+    df = source.bars(symbol)
+    recent = df.tail(args.lookback)
+    plan = plan_position(
+        entry_price=float(df["close"].iloc[-1]),
+        reference_low=float(recent["low"].min()),
+        reference_high=float(recent["high"].max()),
+        config=PositionConfig(),
+    )
+    print(f"{symbol} 交易计划（参考近 {args.lookback} 根）")
+    print()
+    print(markdown_table(pd.DataFrame([plan.to_dict()])))
+
+    score = defend_score(df).tail(5)
+    print()
+    print("近 5 根防卖飞评分：")
+    print(markdown_table(score[["score", "advice", "up_close", "above_bbi", "no_volume_bear", "trend_up", "j_not_dead"]].reset_index().rename(columns={"index": "date"})))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -347,6 +407,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_daily.add_argument("--seed", type=int, default=11)
     p_daily.add_argument("--out", default=str(DEFAULT_OUT))
     p_daily.set_defaults(func=cmd_daily)
+
+    p_study = sub.add_parser("study", help="event study: forward returns of every rule in a profile vs baseline")
+    p_study.add_argument("--profile", default=None, help="rule set; default = generic rules")
+    p_study.add_argument("--data-dir", default=None)
+    p_study.add_argument("--symbols-count", type=int, default=30)
+    p_study.add_argument("--days", type=int, default=600)
+    p_study.add_argument("--seed", type=int, default=11)
+    p_study.add_argument("--horizons", default="1,3,5,10", help="comma separated forward horizons in trading days")
+    p_study.add_argument("--min-history", type=int, default=60)
+    p_study.add_argument("--out", default=str(DEFAULT_OUT))
+    p_study.set_defaults(func=cmd_study)
+
+    p_plan = sub.add_parser("plan", help="trade plan (stop/targets/size) and defend-score for a symbol")
+    p_plan.add_argument("--symbol", default=None)
+    p_plan.add_argument("--data-dir", default=None)
+    p_plan.add_argument("--symbols-count", type=int, default=10)
+    p_plan.add_argument("--days", type=int, default=400)
+    p_plan.add_argument("--seed", type=int, default=11)
+    p_plan.add_argument("--lookback", type=int, default=30, help="bars used for the structural reference low/high")
+    p_plan.add_argument("--out", default=str(DEFAULT_OUT))
+    p_plan.set_defaults(func=cmd_plan)
     return parser
 
 

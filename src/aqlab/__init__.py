@@ -15,12 +15,15 @@ from aqlab.evaluation import default_tasks, run_eval
 from aqlab.metrics import compute_metrics
 from aqlab.notify import ConsoleNotifier, FeishuWebhookNotifier, build_feishu_card
 from aqlab.pipeline import DailyConfig, DailyPipeline, write_daily_report
+from aqlab.position import PositionConfig, defend_score, plan_position, simulate_exit, simulate_signals
+from aqlab.profiles import build_gate, list_profiles, load_profile
 from aqlab.rules import DEFAULT_RULE_BINDINGS, ActivityValueGate, NeedleBelowMA, TieredPullback, VolumePriceSurge, build_rule
 from aqlab.screen import rank_universe
 from aqlab.strategies import STRATEGIES, MACrossStrategy, MeanReversionStrategy, MomentumStrategy
+from aqlab.study import forward_returns, rule_event_study, study_profile
 from aqlab.tools import ToolRegistry, default_registry
 
-__version__ = "0.3.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "BacktestConfig",
@@ -57,5 +60,16 @@ __all__ = [
     "ConsoleNotifier",
     "FeishuWebhookNotifier",
     "build_feishu_card",
+    "PositionConfig",
+    "plan_position",
+    "defend_score",
+    "simulate_exit",
+    "simulate_signals",
+    "load_profile",
+    "list_profiles",
+    "build_gate",
+    "forward_returns",
+    "rule_event_study",
+    "study_profile",
     "__version__",
 ]
