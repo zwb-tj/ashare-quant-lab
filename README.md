@@ -530,6 +530,22 @@ python -m aqlab.cli quality --data-dir data/raw --max-gap-days 5 --cross-check d
 API：`check_frame` / `audit_universe` / `cross_source_diff` / `snapshot_hash`。
 **"没有换手率"标为 info 而不是 error**——因为相关规则会跳过该条件并注明，而不是偷偷用估计值。
 
+## 回测"自己实际推出去的名单"（v0.10）
+
+不重新选股，直接读选股日志目录（`picks_YYYY-MM-DD.json`，按 b1/b2/b3/v3/n20/n30/fa/fb 分桶），
+用**次日开盘**入场、持有 h 日收盘出场，同一只票 5 个交易日内只算第一次（避免续持被重复统计），
+并支持**同期等权篮子基准**——没有基准的负收益无法解读（大盘跌 5% 时 -4% 其实是赢）。
+
+```bash
+aqlab picks-backtest --archive ./picks_archive --buckets b1,b2,n20,n30,v3 \
+  --dedupe-window 5 --horizons 1,3,5,10 \
+  --benchmark-symbols 600000,600004,600009 --benchmark-sample 100 --out output
+```
+
+输出 `picks_evaluated.csv`（含 `fwd_*` / `bench_*` / `excess_*` / `entry_*`）、`summary.csv`、`summary.md`。
+`--confirm` 会额外跑开盘量比闸门（需要分钟数据）；`--benchmark-dir` 可复用已缓存的篮子日线。
+把"发布日"和"可买入日"分开记，是这个模块最容易自欺的地方，所以口径写进了报告表头。
+
 ## 路线图
 
 - ✅ **v0.2** LLM / Agent 研究层：只读工具层 + 有界代理循环 + 全步骤 trace + 可靠性评测（落地率/幻觉/弃答）。
@@ -539,6 +555,7 @@ API：`check_frame` / `audit_universe` / `cross_source_diff` / `snapshot_hash`�
 - ✅ **v0.6** 参数扫描：三合一格点对比 + 达标选优，实测跑出"扩池 > 调阈值"的结论并新增 `zgnb_full_v2` 档案。
 - ✅ **v0.7** 数据质量：缺口/零成交/异常跳变/多源交叉/快照指纹（`aqlab quality`）。
 - ✅ **v0.8** 开盘量比确认：7 分钟量比闸门 + 决策表 + 因果性测试（`aqlab decide`），并写明合成数据边界。
+- ✅ **v0.10** 选股日志回测：次日开盘入场 + 去重窗口 + 持有期收益 + **同期等权篮子超额**（`aqlab picks-backtest`）。
 - **v0.9** 可视化报告：净值/回撤/因子贡献图。
 
 

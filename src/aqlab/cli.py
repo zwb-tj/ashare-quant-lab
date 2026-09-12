@@ -596,6 +596,159 @@ def cmd_confirm_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_picks_backtest(args: argparse.Namespace) -> int:
+    """不重新选股：直接评估 picks_archive 里你实际推出去的名单。"""
+    import pandas as pd
+
+    from aqlab.confirm_eval import ConfirmEvalConfig, evaluate_confirmation, summarize_confirmation
+    from aqlab.data import load_ohlcv_csv
+    from aqlab.picks import (
+        PickBacktestConfig,
+        attach_benchmark,
+        benchmark_candidates,
+        benchmark_returns,
+        dedupe_picks,
+        evaluate_picks,
+        load_picks_archive,
+        summarize_picks,
+        summary_markdown,
+    )
+    from aqlab.stockdb import fetch_daily, fetch_minute
+    from aqlab.tables import markdown_table
+
+    buckets = tuple(b.strip() for b in args.buckets.split(",") if b.strip())
+    picks = load_picks_archive(args.archive, buckets=buckets)
+    if picks.empty:
+        print("选股日志为空（检查 --archive 与 --buckets）。")
+        return 0
+    config = PickBacktestConfig(
+        horizons=tuple(int(h) for h in args.horizons.split(",") if h.strip()),
+        entry=args.entry,
+        dedupe_window=args.dedupe_window,
+        buckets=buckets,
+    )
+    unique = dedupe_picks(picks, config.dedupe_window)
+    by_bucket = picks.groupby("bucket").size().to_dict()
+    print(f"日志：{picks['date'].min():%Y-%m-%d} ~ {picks['date'].max():%Y-%m-%d}｜记录 {len(picks)} 条｜分桶 {by_bucket}")
+    print(f"去重后（同票 {config.dedupe_window} 日内只算一次）：{len(unique)} 条｜标的 {unique['symbol'].nunique()} 只")
+
+    cache = Path(args.cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    start = (picks["date"].min() - pd.Timedelta(days=10)).strftime("%Y%m%d")
+    daily: dict[str, pd.DataFrame] = {}
+    failed: list[str] = []
+    for symbol in sorted(unique["symbol"].unique()):
+        path = cache / f"{symbol}.csv"
+        if path.exists() and not args.refresh:
+            daily[symbol] = load_ohlcv_csv(path)
+            continue
+        try:
+            frame = fetch_daily(symbol, start, args.data_end)
+        except Exception:  # noqa: BLE001 - 记录失败，不让整轮崩
+            failed.append(symbol)
+            continue
+        if frame.empty:
+            failed.append(symbol)
+            continue
+        frame.to_csv(path, encoding="utf-8-sig")
+        daily[symbol] = frame
+    print(f"日线数据：可用 {len(daily)} 只" + (f"；缺失 {len(failed)} 只（如 {failed[:5]}）" if failed else ""))
+
+    evaluated = evaluate_picks(unique, daily, config)
+
+    benchmark_dir = Path(getattr(args, "benchmark_dir", "") or (cache / "bench"))
+    basket_symbols = [s.strip() for s in (getattr(args, "benchmark_symbols", "") or "").split(",") if s.strip()]
+    basket_sample = int(getattr(args, "benchmark_sample", 0) or 0)
+    basket: dict[str, pd.DataFrame] = {}
+    if basket_symbols:
+        benchmark_dir.mkdir(parents=True, exist_ok=True)
+        for symbol in basket_symbols:
+            path = benchmark_dir / f"{symbol}.csv"
+            try:
+                if path.exists() and not args.refresh:
+                    frame = load_ohlcv_csv(path)
+                else:
+                    frame = fetch_daily(symbol, start, args.data_end)
+                    if frame.empty:
+                        continue
+                    frame.to_csv(path, encoding="utf-8-sig")
+            except Exception:  # noqa: BLE001
+                continue
+            if len(frame) > 0:
+                basket[symbol] = frame
+    elif benchmark_dir.exists():
+        for path in sorted(benchmark_dir.glob("*.csv")):
+            try:
+                frame = load_ohlcv_csv(path)
+            except Exception:  # noqa: BLE001
+                continue
+            if len(frame) > 0:
+                basket[path.stem] = frame
+
+    if basket:
+        chosen = benchmark_candidates(basket, exclude=unique["symbol"], sample=basket_sample)
+        basket = {symbol: basket[symbol] for symbol in chosen}
+        benchmark = benchmark_returns(basket, evaluated["entry_date"].dropna().unique(), config)
+        evaluated = attach_benchmark(evaluated, benchmark)
+        covered = benchmark[[c for c in benchmark.columns if c.startswith("benchn_")]].max().max() if len(benchmark) else 0
+        print(f"基准篮子：{len(basket)} 只（已剔除本轮选中的票）｜单日最多可用成员 {int(covered)}")
+
+    summary = summarize_picks(evaluated, config)
+    print()
+    print(summary_markdown(summary, config))
+
+    details_tables = []
+    if args.confirm:
+        ce_config = ConfirmEvalConfig(
+            window_minutes=args.window_minutes,
+            baseline_days=args.baseline_days,
+            min_ratio=args.min_ratio,
+            horizons=config.horizons,
+        )
+        window = unique[(unique["date"] >= pd.Timestamp(args.confirm_start)) & (unique["date"] <= pd.Timestamp(args.confirm_end))]
+        print()
+        print(f"量比确认评估：窗口 {args.confirm_start} ~ {args.confirm_end}｜候选 {len(window)} 条")
+        for symbol, group in window.groupby("symbol"):
+            if symbol not in daily:
+                continue
+            minute_path = cache / f"{symbol}_min.csv"
+            if not minute_path.exists() or args.refresh:
+                try:
+                    minute = fetch_minute(symbol, args.confirm_start.replace("-", ""), args.confirm_end.replace("-", ""))
+                except Exception:  # noqa: BLE001
+                    continue
+                if minute.empty:
+                    continue
+                minute.rename_axis("minute").reset_index()[["minute", "close", "volume"]].to_csv(
+                    minute_path, index=False, encoding="utf-8-sig"
+                )
+            minute = pd.read_csv(minute_path, parse_dates=["minute"]).set_index("minute")
+            signal = pd.Series(False, index=daily[symbol].index)
+            signal.loc[daily[symbol].index.intersection(group["date"])] = True
+            details, _ratio = evaluate_confirmation(daily[symbol], minute, signal, ce_config, symbol=symbol)
+            if not details.empty:
+                details_tables.append(details)
+        if details_tables:
+            merged = pd.concat(details_tables, ignore_index=True)
+            confirm_summary = summarize_confirmation(merged, ce_config)
+            view = confirm_summary.copy()
+            for horizon in ce_config.horizons:
+                view[f"mean_{horizon}"] = (view[f"mean_{horizon}"].astype(float) * 100).round(2)
+                view[f"win_{horizon}"] = (view[f"win_{horizon}"].astype(float) * 100).round(1)
+            print(markdown_table(view.rename(columns={"decision": "决策", "signals": "信号数"})))
+        else:
+            print("（窗口内没有可评估的分钟数据）")
+
+    if args.out:
+        out = Path(args.out) / "picks_backtest"
+        out.mkdir(parents=True, exist_ok=True)
+        evaluated.to_csv(out / "picks_evaluated.csv", index=False, encoding="utf-8-sig")
+        summary.to_csv(out / "summary.csv", index=False, encoding="utf-8-sig")
+        (out / "summary.md").write_text(summary_markdown(summary, config), encoding="utf-8")
+        print(f"\n结果已写入：{out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -790,10 +943,49 @@ def build_parser() -> argparse.ArgumentParser:
     p_ce.add_argument("--horizons", default="1,3,5")
     p_ce.add_argument("--out", default=str(DEFAULT_OUT))
     p_ce.set_defaults(func=cmd_confirm_eval)
+    p_pb = sub.add_parser("picks-backtest", help="backtest the picks you actually published (picks_archive)")
+    p_pb.add_argument("--archive", required=True, help="directory with picks_YYYY-MM-DD.json")
+    p_pb.add_argument("--cache", default="data/picks", help="cache directory for fetched daily/minute bars")
+    p_pb.add_argument("--buckets", default="b1,b2,n20,n30,v3")
+    p_pb.add_argument("--entry", default="next_open", choices=["next_open", "next_close"])
+    p_pb.add_argument("--dedupe-window", type=int, default=5)
+    p_pb.add_argument("--horizons", default="1,3,5,10")
+    p_pb.add_argument("--data-end", default="20260930")
+    p_pb.add_argument("--refresh", action="store_true", help="re-fetch bars even if cached")
+    p_pb.add_argument("--confirm", action="store_true", help="also evaluate the opening volume-ratio gate")
+    p_pb.add_argument("--confirm-start", default="2026-06-17")
+    p_pb.add_argument("--confirm-end", default="2026-08-07")
+    p_pb.add_argument("--window-minutes", type=int, default=7)
+    p_pb.add_argument("--baseline-days", type=int, default=5)
+    p_pb.add_argument("--min-ratio", type=float, default=1.0)
+    p_pb.add_argument("--benchmark-dir", default="", help="directory of basket daily CSVs (default: <cache>/bench)")
+    p_pb.add_argument("--benchmark-symbols", default="", help="comma list of basket symbols to fetch/cache on demand")
+    p_pb.add_argument("--benchmark-sample", type=int, default=0, help="evenly sample N basket symbols (0 = all)")
+    p_pb.add_argument("--out", default=str(DEFAULT_OUT))
+    p_pb.set_defaults(func=cmd_picks_backtest)
     return parser
 
 
+def _make_output_encoding_safe() -> None:
+    """Windows 控制台默认 GBK，遇到 −/≤/℃ 这类字符会直接抛 UnicodeEncodeError。
+
+    优先切 UTF-8；切不动就退化成替换字符，保证报告能完整打印完。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except Exception:  # noqa: BLE001 - 老终端不支持就退到 replace
+            try:
+                reconfigure(errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _make_output_encoding_safe()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

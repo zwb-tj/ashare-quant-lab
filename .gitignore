@@ -16,8 +16,7 @@ venv/
 htmlcov/
 
 # ---- Data & outputs (never commit market data dumps or reports) ----
-data/raw/
-data/cache/
+data/
 output/
 reports/
 *.parquet
