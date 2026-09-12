@@ -22,9 +22,10 @@ from aqlab.rules import DEFAULT_RULE_BINDINGS, ActivityValueGate, NeedleBelowMA,
 from aqlab.screen import rank_universe
 from aqlab.strategies import STRATEGIES, MACrossStrategy, MeanReversionStrategy, MomentumStrategy
 from aqlab.study import forward_returns, rule_event_study, study_profile
+from aqlab.sweep import SweepConfig, parse_grid, pick_best, run_sweep
 from aqlab.tools import ToolRegistry, default_registry
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "BacktestConfig",
@@ -72,5 +73,9 @@ __all__ = [
     "forward_returns",
     "rule_event_study",
     "study_profile",
+    "SweepConfig",
+    "run_sweep",
+    "pick_best",
+    "parse_grid",
     "__version__",
 ]

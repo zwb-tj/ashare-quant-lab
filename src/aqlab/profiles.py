@@ -37,6 +37,16 @@ PROFILES: dict[str, list[tuple[str, dict[str, Any], float]]] = {
         ("needle_rsl", {"short_max": 20.0, "long_min": 80.0}, 0.15),
         ("volume_price_v3", {}, 0.25),
     ],
+    # v0.6 参数扫描（aqlab sweep）的结论：票池扩到 80 只才把平均持仓推到 ≥3；
+    # j_max 13→30 只会增加持仓但让证据变差，故取中间值 20；spike 1.8 略优于 2.0。
+    # 证据来自合成行情，仅用于流程验证，不代表真实市场。
+    "zgnb_full_v2": [
+        ("b1_graded", {"j_max": 20.0, "spike_multiple": 1.8}, 0.25),
+        ("b2_confirm", {}, 0.20),
+        ("b3_confirm", {}, 0.15),
+        ("needle_rsl", {"short_max": 20.0, "long_min": 80.0}, 0.15),
+        ("volume_price_v3", {}, 0.25),
+    ],
     "zgnb_brick": [
         ("b1_graded", {"use_brick_filter": True}, 0.30),
         ("brick_green_to_red", {}, 0.25),

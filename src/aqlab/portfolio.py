@@ -59,6 +59,7 @@ class PortfolioConfig:
     shrinkage: float = 0.10        # 协方差向对角矩阵收缩
     risk_aversion: float = 1.0
     min_history: int = 120
+    min_positions: float = 3.0     # 分散度目标：平均持仓低于它就在报告里报警
 
     def __post_init__(self) -> None:
         if self.method not in METHODS:
@@ -81,6 +82,8 @@ class PortfolioConfig:
             raise ValueError("risk_aversion must be > 0")
         if self.min_history < 20:
             raise ValueError("min_history must be >= 20")
+        if self.min_positions < 1:
+            raise ValueError("min_positions must be >= 1")
 
 
 # --------------------------------------------------------------------------------------
@@ -436,10 +439,10 @@ def simulate_portfolio(
         budget = 1.0 - config.cash_buffer
         avg_positions = float(np.mean([r["positions"] for r in rebalances]))
         avg_gross = float(np.mean([r["gross_exposure"] for r in rebalances]))
-        if avg_positions < 3:
+        if avg_positions < config.min_positions:
             summary["warning"] = (
-                f"平均持仓仅 {avg_positions:.1f} 只，分散度不足（建议 ≥5 只）："
-                "组合层无法弥补信号层过于稀疏，应收紧/放宽规则或扩大票池"
+                f"平均持仓仅 {avg_positions:.1f} 只，低于目标 {config.min_positions:g} 只："
+                "组合层无法弥补信号层过于稀疏，应放宽规则或扩大票池"
             )
         elif avg_gross < 0.5 * budget:
             summary["warning"] = (

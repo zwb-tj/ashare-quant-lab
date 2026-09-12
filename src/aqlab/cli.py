@@ -400,6 +400,7 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
         turnover_limit=args.turnover_limit,
         cost_bps=args.cost_bps,
         min_history=args.min_history,
+        min_positions=args.min_positions,
     )
     result = simulate_portfolio(universe, signals, config)
     exposure = None
@@ -410,6 +411,51 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
     if args.out:
         paths = write_portfolio_report(Path(args.out) / "portfolio", result, exposure, config)
         print(f"\n报告已写入：{paths['markdown']}")
+    return 0
+
+
+def cmd_sweep(args: argparse.Namespace) -> int:
+    from aqlab.profiles import load_profile
+    from aqlab.rules import DEFAULT_RULE_BINDINGS
+    from aqlab.sweep import SweepConfig, format_sweep, parse_grid, pick_best, run_sweep, write_sweep
+    from aqlab.tools import CsvDataSource, SyntheticDataSource
+
+    bindings = load_profile(args.profile) if args.profile else list(DEFAULT_RULE_BINDINGS)
+    grids = parse_grid(args.set or [])
+    sizes = [int(s) for s in args.sizes.split(",") if s.strip()]
+
+    universes: dict[str, dict] = {}
+    if args.data_dir:
+        source = CsvDataSource(args.data_dir)
+        universes[args.data_dir] = {sym: source.bars(sym) for sym in source.symbols()}
+    else:
+        for n in sizes:
+            source = SyntheticDataSource(n_symbols=n, n_days=args.days, seed=args.seed)
+            universes[f"{n}只"] = {sym: source.bars(sym) for sym in source.symbols()}
+
+    config = SweepConfig(
+        horizons=tuple(int(h) for h in args.horizons.split(",") if h.strip()),
+        main_horizon=args.main_horizon,
+        test_days=args.test_days,
+        step_days=args.step_days,
+        min_history=args.min_history,
+        min_positions=args.min_positions,
+        method=args.method,
+        max_weight=args.max_weight,
+        cash_buffer=args.cash_buffer,
+        turnover_limit=args.turnover_limit,
+        cost_bps=args.cost_bps,
+        rebalance_days=args.rebalance_days,
+    )
+    table = run_sweep(universes, bindings, grids, config)
+    best = pick_best(table, objective=args.objective)
+    print(format_sweep(table, config, best))
+
+    if args.out:
+        out = Path(args.out) / "sweep"
+        paths = write_sweep(out, table, meta={"profile": args.profile or "generic", "sets": args.set or [], "sizes": sizes})
+        (out / "sweep.md").write_text(format_sweep(table, config, best), encoding="utf-8")
+        print(f"\n报告已写入：{out / 'sweep.md'}")
     return 0
 
 
@@ -539,8 +585,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_pf.add_argument("--turnover-limit", type=float, default=0.30)
     p_pf.add_argument("--cost-bps", type=float, default=5.0)
     p_pf.add_argument("--min-history", type=int, default=120)
+    p_pf.add_argument("--min-positions", type=float, default=3.0, help="diversification target; below it the report warns")
     p_pf.add_argument("--out", default=str(DEFAULT_OUT))
     p_pf.set_defaults(func=cmd_portfolio)
+
+    p_sw = sub.add_parser("sweep", help="parameter sweep: event study + walk-forward + portfolio per grid point")
+    p_sw.add_argument("--profile", default=None)
+    p_sw.add_argument("--set", action="append", default=None, help="rule.param=v1,v2 (repeatable -> cartesian product)")
+    p_sw.add_argument("--sizes", default="40", help="comma separated synthetic universe sizes, e.g. 40,80,120")
+    p_sw.add_argument("--data-dir", default=None)
+    p_sw.add_argument("--days", type=int, default=900)
+    p_sw.add_argument("--seed", type=int, default=11)
+    p_sw.add_argument("--horizons", default="1,3,5,10")
+    p_sw.add_argument("--main-horizon", type=int, default=5)
+    p_sw.add_argument("--test-days", type=int, default=60)
+    p_sw.add_argument("--step-days", type=int, default=60)
+    p_sw.add_argument("--min-history", type=int, default=120)
+    p_sw.add_argument("--min-positions", type=float, default=3.0, help="diversification target for the portfolio layer")
+    p_sw.add_argument("--method", choices=["equal", "inverse_vol", "risk_parity", "min_variance", "mean_variance"], default="risk_parity")
+    p_sw.add_argument("--max-weight", type=float, default=0.20)
+    p_sw.add_argument("--cash-buffer", type=float, default=0.20)
+    p_sw.add_argument("--turnover-limit", type=float, default=0.30)
+    p_sw.add_argument("--cost-bps", type=float, default=5.0)
+    p_sw.add_argument("--rebalance-days", type=int, default=5)
+    p_sw.add_argument("--objective", default="excess_mean", help="column to maximise among rows meeting the target")
+    p_sw.add_argument("--out", default=str(DEFAULT_OUT))
+    p_sw.set_defaults(func=cmd_sweep)
     return parser
 
 
