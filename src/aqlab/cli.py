@@ -679,7 +679,13 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
     elif benchmark_dir.exists():
         for path in sorted(benchmark_dir.glob("*.csv")):
             try:
-                frame = load_ohlcv_csv(path)
+                if args.refresh:                       # 篮子缓存也要跟着刷新，否则新入场日没有基准
+                    frame = fetch_daily(path.stem, start, args.data_end)
+                    if frame.empty:
+                        continue
+                    frame.to_csv(path, encoding="utf-8-sig")
+                else:
+                    frame = load_ohlcv_csv(path)
             except Exception:  # noqa: BLE001
                 continue
             if len(frame) > 0:

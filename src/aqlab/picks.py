@@ -238,20 +238,18 @@ def summarize_picks(evaluated: pd.DataFrame, config: PickBacktestConfig | None =
             row[f"median_{horizon}"] = float(valid.median()) if len(valid) else np.nan
             row[f"win_{horizon}"] = float((valid > 0).mean()) if len(valid) else np.nan
             if has_benchmark:
+                # 基准与超额只在"个股和篮子都有数据"的配对子集上算，否则 mean 和 excess 不是同一批样本
                 bench_column, excess_column = f"bench_{horizon}", f"excess_{horizon}"
                 bench = (
-                    pd.to_numeric(group[bench_column], errors="coerce").reindex(valid.index).dropna()
+                    pd.to_numeric(group[bench_column], errors="coerce")
                     if bench_column in group.columns
-                    else pd.Series(dtype=float)
+                    else pd.Series(np.nan, index=group.index)
                 )
-                excess = (
-                    pd.to_numeric(group[excess_column], errors="coerce").dropna()
-                    if excess_column in group.columns
-                    else pd.Series(dtype=float)
-                )
-                row[bench_column] = float(bench.mean()) if len(bench) else np.nan
-                row[excess_column] = float(excess.mean()) if len(excess) else np.nan
-                row[f"excesswin_{horizon}"] = float((excess > 0).mean()) if len(excess) else np.nan
+                paired = pd.DataFrame({"fwd": values, "bench": bench}).dropna()
+                row[f"npaired_{horizon}"] = int(len(paired))
+                row[bench_column] = float(paired["bench"].mean()) if len(paired) else np.nan
+                row[excess_column] = float((paired["fwd"] - paired["bench"]).mean()) if len(paired) else np.nan
+                row[f"excesswin_{horizon}"] = float(((paired["fwd"] - paired["bench"]) > 0).mean()) if len(paired) else np.nan
         return row
 
     rows: list[dict] = []
@@ -282,6 +280,7 @@ def summary_markdown(summary: pd.DataFrame, config: PickBacktestConfig | None = 
             view[f"excess_{horizon}"] = (view[f"excess_{horizon}"].astype(float) * 100).round(2) if f"excess_{horizon}" in view.columns else np.nan
             view[f"excesswin_{horizon}"] = (view[f"excesswin_{horizon}"].astype(float) * 100).round(1) if f"excesswin_{horizon}" in view.columns else np.nan
     view = view.rename(columns={"bucket": "分桶", "picks": "选股数"})
+    view = view[[c for c in view.columns if not c.startswith("npaired_")]]   # 配对样本数留在 CSV 里，表格别太宽
     header = f"> 入场：{config.entry}（次日开盘/收盘）｜去重窗口：{config.dedupe_window} 个交易日｜持有期单位：交易日\n"
     if has_benchmark:
         header += "> 基准：同期等权篮子（票池外样本）｜超额 = 个股收益 - 篮子收益｜单位：%\n"

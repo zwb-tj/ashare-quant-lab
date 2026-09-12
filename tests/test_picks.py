@@ -147,6 +147,25 @@ def test_summarize_and_markdown():
     assert summary_markdown(pd.DataFrame(), config) == "没有可汇总的选股记录。"
 
 
+def test_summary_benchmark_uses_paired_subset():
+    # 只有 2/3 条有基准：mean 用全部 3 条，bench/excess 只能用配对的 2 条
+    evaluated = pd.DataFrame(
+        [
+            {"bucket": "b1", "fwd_1": 0.10, "bench_1": 0.02, "excess_1": 0.08},
+            {"bucket": "b1", "fwd_1": -0.10, "bench_1": -0.02, "excess_1": -0.08},
+            {"bucket": "b1", "fwd_1": 0.50, "bench_1": np.nan, "excess_1": np.nan},   # 无基准，不能进基准均值
+        ]
+    )
+    config = PickBacktestConfig(horizons=(1,))
+    summary = summarize_picks(evaluated, config)
+    row = summary[summary["bucket"] == "b1"].iloc[0]
+    assert row["n_1"] == 3 and row["npaired_1"] == 2
+    assert row["mean_1"] == pytest.approx(0.50 / 3)
+    assert row["bench_1"] == pytest.approx(0.0)          # (0.02 - 0.02) / 2
+    assert row["excess_1"] == pytest.approx(0.0)         # mean - bench 必须自洽
+    assert "npaired_1" not in summary_markdown(summary, config)
+
+
 def test_config_validation():
     with pytest.raises(ValueError):
         PickBacktestConfig(horizons=())
