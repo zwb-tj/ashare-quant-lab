@@ -23,6 +23,7 @@ __all__ = [
     "opening_window_volume",
     "opening_window_price",
     "opening_volume_ratio",
+    "opening_features",
     "standard_volume_ratio",
     "confirm_signals",
     "confirmed_signal_series",
@@ -128,6 +129,52 @@ def standard_volume_ratio(
     ratio = (window_volume / config.window_minutes) / (baseline / config.session_minutes)
     return ratio.replace([np.inf, -np.inf], np.nan).rename("standard_volume_ratio")
 
+
+
+def opening_features(minute_bars: pd.DataFrame, config: IntradayConfig | None = None) -> pd.DataFrame:
+    """每日开盘窗口的形态特征（把"向上冲"变成可计算条件）。
+
+    列：
+    * ``window_volume``     窗口累计量
+    * ``window_close``      窗口最后一根收盘价（默认 09:37 价）
+    * ``window_open``       窗口第一根收盘价（约当日开盘）
+    * ``volume_ratio``      窗口内每分钟量的斜率（正=量能递增，用最小二乘斜率/均量归一）
+    * ``up_from_open``      窗口收盘 / 窗口开盘 - 1（开盘后这几分钟是往上冲还是往下砸）
+    * ``window_position``   窗口收盘在窗口最高-最低中的位置（0=贴最低，1=贴最高）
+    """
+    config = config or IntradayConfig()
+    window = _window_frame(minute_bars, config)
+    if window.empty:
+        return pd.DataFrame()
+    grouped = window.groupby("_date")
+    out = pd.DataFrame(
+        {
+            "window_volume": grouped["volume"].sum(),
+            "window_close": grouped["close"].last(),
+            "window_open": grouped["close"].first(),
+            "window_high": grouped["high"].max() if "high" in window.columns else grouped["close"].max(),
+            "window_low": grouped["low"].min() if "low" in window.columns else grouped["close"].min(),
+        }
+    )
+    slopes = []
+    for _, group in grouped:
+        volumes = group["volume"].to_numpy(dtype=float)
+        if len(volumes) < 2 or not np.isfinite(volumes).any():
+            slopes.append(np.nan)
+            continue
+        x = np.arange(len(volumes), dtype=float)
+        mean_volume = float(np.nanmean(volumes))
+        if not np.isfinite(mean_volume) or mean_volume <= 0:
+            slopes.append(np.nan)
+            continue
+        slope = float(np.polyfit(x, np.nan_to_num(volumes), 1)[0])
+        slopes.append(slope / mean_volume)
+    out["volume_slope"] = slopes
+    span = (out["window_high"] - out["window_low"]).replace(0.0, np.nan)
+    out["window_position"] = ((out["window_close"] - out["window_low"]) / span).clip(0.0, 1.0)
+    out["up_from_open"] = out["window_close"] / out["window_open"] - 1.0
+    out["up_from_prev_close"] = np.nan
+    return out.sort_index()
 
 
 def confirm_signals(

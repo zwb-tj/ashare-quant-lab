@@ -11,6 +11,7 @@ from aqlab.intraday import (
     confirmed_signal_series,
     generate_synthetic_minutes,
     opening_volume_ratio,
+    opening_features,
     opening_window_price,
     opening_window_volume,
     standard_volume_ratio,
@@ -104,6 +105,32 @@ def test_opening_window_price_is_the_close_of_the_last_bar_in_the_window():
     price = opening_window_price(bars, IntradayConfig(window_minutes=3))
     assert list(price.values) == [12.0]
     assert opening_window_price(bars, IntradayConfig(window_minutes=5)).iloc[0] == pytest.approx(14.0)
+
+
+def test_opening_features_describe_the_opening_push():
+    bars = minutes_for_day("2024-01-02", [10.0, 20.0, 30.0, 40.0, 50.0])
+    bars["close"] = [10.0, 10.2, 10.1, 10.4, 10.6]
+    bars["high"] = [10.1, 10.3, 10.2, 10.5, 10.7]
+    bars["low"] = [9.9, 10.0, 10.0, 10.3, 10.4]
+    features = opening_features(bars, IntradayConfig(window_minutes=5))
+    row = features.iloc[0]
+    assert row["window_volume"] == pytest.approx(150.0)
+    assert row["window_close"] == pytest.approx(10.6)
+    assert row["up_from_open"] == pytest.approx(0.06)          # 10.6 / 10.0 - 1
+    assert row["volume_slope"] > 0                             # 量能递增
+    assert row["window_position"] == pytest.approx(0.875)      # 收在窗口上沿
+    assert np.isnan(row["up_from_prev_close"])                 # 由调用方接日线补上
+
+    fading = minutes_for_day("2024-01-03", [50.0, 40.0, 30.0, 20.0, 10.0])
+    assert opening_features(fading, IntradayConfig(window_minutes=5)).iloc[0]["volume_slope"] < 0
+
+
+def test_opening_features_respects_the_window_length():
+    bars = minutes_for_day("2024-01-02", [1.0, 2.0, 3.0, 100.0, 100.0])
+    short = opening_features(bars, IntradayConfig(window_minutes=3))
+    long = opening_features(bars, IntradayConfig(window_minutes=5))
+    assert short.iloc[0]["window_volume"] == pytest.approx(6.0)
+    assert long.iloc[0]["window_volume"] == pytest.approx(206.0)
 
 
 def test_config_validation():

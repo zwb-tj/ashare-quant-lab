@@ -784,6 +784,111 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_universe_study(args: argparse.Namespace) -> int:
+    """全市场 B1 研究：选股 + 大盘阶段（0AMV）+ 离场规则，同一批信号直接对比。"""
+    import pandas as pd
+
+    from aqlab.exits import EXIT_REASONS, ExitConfig
+    from aqlab.rules_zgnb import ActiveMarketValueGate
+    from aqlab.study_universe import UniverseStudyConfig, load_universe_daily, study_universe, summarize_trades
+    from aqlab.tables import markdown_table
+
+    params: dict = {}
+    if args.params:
+        for item in args.params.split(","):
+            if not item.strip():
+                continue
+            key, _, value = item.partition("=")
+            try:
+                params[key.strip()] = float(value) if "." in value else int(value)
+            except ValueError:
+                params[key.strip()] = value.strip()
+
+    exit_config = ExitConfig(
+        mode=args.exit_mode,
+        stop_pct=args.stop_pct,
+        intraday_stop_pct=args.intraday_stop,
+        take_profit_pct=args.take_profit if args.take_profit > 0 else None,
+        min_holding_days=args.min_holding,
+        white_break_days=args.white_break_days,
+        use_death_cross=not args.no_death_cross,
+        use_white_break=not args.no_white_break,
+        didi_mode="off" if args.no_didi else args.didi_mode,
+        max_holding_days=args.max_holding if args.max_holding > 0 else None,
+    )
+    config = UniverseStudyConfig(
+        rule=args.rule,
+        rule_params=params,
+        start=args.start,
+        end=args.end,
+        exit=exit_config,
+        use_regime_gate=not args.no_regime_gate,
+        limit=args.limit,
+    )
+    frames = load_universe_daily(args.daily_dir, limit=args.limit)
+    if not frames:
+        print(f"没有读到日线数据（--daily-dir {args.daily_dir}）")
+        return 1
+    print(f"标的 {len(frames)} 只｜规则 {config.rule}{params}｜离场 {args.exit_mode}｜大盘门 {'开' if config.use_regime_gate else '关'}")
+
+    gate = ActiveMarketValueGate()
+    table, meta = study_universe(frames, config, gate=gate)
+    if table.empty:
+        print(f"没有交易（被大盘阶段挡掉 {meta['gated_out']} 笔）")
+        return 0
+
+    print()
+    print("## 全部交易")
+    print(markdown_table(summarize_trades(table)))
+    print()
+    print("## 按大盘阶段（0AMV 波段）")
+    table["波段"] = table["signal_date"].apply(lambda date: "开波段" if int(_regime_lookup(gate, frames, date)) == 1 else "关波段")
+    print(markdown_table(summarize_trades(table, by="波段")))
+    print()
+    print("## 按离场原因")
+    table["离场原因"] = table["reason"].map(lambda code: EXIT_REASONS.get(code, code))
+    print(markdown_table(summarize_trades(table, by="离场原因")))
+    print()
+    print("## 按年份")
+    print(markdown_table(summarize_trades(table, by="year")))
+    print()
+    print("## 对照组：同一批信号机械持有 h 日（%）")
+    rows = [{"持有期": f"{h} 日", "平均收益%": round(table[f"hold_{h}"].mean() * 100, 2),
+             "中位%": round(table[f"hold_{h}"].median() * 100, 2),
+             "胜率%": round((table[f"hold_{h}"] > 0).mean() * 100, 1)}
+            for h in (1, 3, 5, 10, 20)]
+    rows.append({"持有期": "离场规则", "平均收益%": round(table["return_pct"].mean() * 100, 2),
+                 "中位%": round(table["return_pct"].median() * 100, 2),
+                 "胜率%": round((table["return_pct"] > 0).mean() * 100, 1)})
+    rows.append({"持有期": "平均持有天数", "平均收益%": round(table["bars"].mean(), 1), "中位%": "", "胜率%": ""})
+    print(markdown_table(pd.DataFrame(rows)))
+
+    if args.out:
+        out = Path(args.out) / "universe_study"
+        out.mkdir(parents=True, exist_ok=True)
+        table.to_csv(out / "trades.csv", index=False, encoding="utf-8-sig")
+        for name, by in (("summary_all", None), ("summary_regime", "波段"), ("summary_reason", "离场原因"), ("summary_year", "year")):
+            summarize_trades(table, by=by).to_csv(out / f"{name}.csv", index=False, encoding="utf-8-sig")
+        (out / "meta.txt").write_text("\n".join(f"{k}: {v}" for k, v in meta.items()), encoding="utf-8")
+        print(f"\n结果已写入：{out}")
+    return 0
+
+
+_REGIME_CACHE: dict = {}
+
+
+def _regime_lookup(gate, frames, date):
+    """按需计算 0AMV 波段状态（缓存一次）。"""
+    import pandas as pd
+
+    if "series" not in _REGIME_CACHE:
+        raw = gate.gate_series(frames)
+        _REGIME_CACHE["series"] = raw["gate"].shift(1).fillna(0).astype(int)
+    series = _REGIME_CACHE["series"]
+    stamp = pd.Timestamp(date)
+    return series.get(stamp, 0)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1005,6 +1110,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_pb.add_argument("--benchmark-sample", type=int, default=0, help="evenly sample N basket symbols (0 = all)")
     p_pb.add_argument("--out", default=str(DEFAULT_OUT))
     p_pb.set_defaults(func=cmd_picks_backtest)
+    p_us = sub.add_parser("universe-study", help="full-market B1 study: regime gate + exit rules on one signal set")
+    p_us.add_argument("--daily-dir", default="data/universe/daily")
+    p_us.add_argument("--rule", default="b1_graded")
+    p_us.add_argument("--params", default=None)
+    p_us.add_argument("--start", default="2025-01-01")
+    p_us.add_argument("--end", default="2026-09-11")
+    p_us.add_argument("--exit-mode", default="entry_low", choices=["entry_low", "fixed", "atr"])
+    p_us.add_argument("--stop-pct", type=float, default=0.03, help="entry_low: 止损价 = 入场K线最低价 × (1 - x)")
+    p_us.add_argument("--intraday-stop", type=float, default=None, help="fixed 模式的盘中止损百分比（如 0.07）")
+    p_us.add_argument("--take-profit", type=float, default=0.15, help="盘中止盈百分比，<=0 关闭")
+    p_us.add_argument("--min-holding", type=int, default=3, help="最短持仓保护天数（前 N 日不止损）")
+    p_us.add_argument("--white-break-days", type=int, default=2)
+    p_us.add_argument("--no-death-cross", action="store_true", help="关闭白线下穿黄线清仓")
+    p_us.add_argument("--no-white-break", action="store_true", help="关闭白线连续破位清仓")
+    p_us.add_argument("--no-didi", action="store_true", help="关闭滴滴（今收 < 昨低）")
+    p_us.add_argument("--didi-mode", default="full", choices=["full", "simple"], help="full=连续两根阴线+破昨低+量能不缩+不在深跌区")
+    p_us.add_argument("--max-holding", type=int, default=0, help="强制持有上限，0 = 不设")
+    p_us.add_argument("--no-regime-gate", action="store_true", help="不用 0AMV 大盘阶段过滤买入")
+    p_us.add_argument("--limit", type=int, default=None)
+    p_us.add_argument("--out", default=str(DEFAULT_OUT))
+    p_us.set_defaults(func=cmd_universe_study)
     return parser
 
 
