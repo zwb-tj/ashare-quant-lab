@@ -1,4 +1,4 @@
-# A-Share Quant Lab (`aqlab`)
+﻿# A-Share Quant Lab (`aqlab`)
 
 [![ci](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml)
 
@@ -32,7 +32,7 @@ python -m aqlab.cli demo --seed 7       # 下跌行情
 # 4) 横截面选股打分（30 只合成票池，加权因子打分排序）
 python -m aqlab.cli screen --symbols 30 --days 500 --top 5
 
-# 5) 用你自己的 CSV 回测（支持中文列名：日期/开盘/最高/最低/收盘/成交量）
+# 5) 用自定义 CSV 回测（支持中文列名：日期/开盘/最高/最低/收盘/成交量）
 python -m aqlab.cli run --csv data/raw/600519.csv --strategy ma_cross --params fast=10,slow=30
 
 # 6) 可选：下载真实日线（需要 tushare token 或 akshare）
@@ -163,7 +163,7 @@ powershell -ExecutionPolicy Bypass -File scripts\run_daily.ps1 -DryRun   # 先�
         output/daily/daily-YYYY-MM-DD.md + .json   ──►  飞书卡片（不签名自定义机器人）
 ```
 
-**规则是插件，阈值是配置**。仓库里实现的是通用形态 + 中性命名；你自己的参数（均线、档位、放大倍数、确认天数、开关阈值）通过配置传进去即可：
+**规则是插件，阈值是配置**。仓库里实现的是通用形态 + 中性命名；具体参数（均线、档位、放大倍数、确认天数、开关阈值）通过配置传入即可：
 
 | 通用规则 | 实现要点 | 可对应的买方概念 |
 | --- | --- | --- |
@@ -172,7 +172,7 @@ powershell -ExecutionPolicy Bypass -File scripts\run_daily.ps1 -DryRun   # 先�
 | `volume_price_surge` | 量价齐升：涨幅达标 + 放量，`confirm_days=1` 为单日、`=3` 为三日确认 | 量价齐升 V1 / V3 |
 | `ActivityValueGate` | 活跃市值开关：`Σ(close×volume)` 的双均线 + 滞回开关（on/off 阈值分离） | 0AMV 活跃市值 + 开关规则 |
 
-> 公开仓库里刻意使用**中性命名**（`tiered_pullback` / `needle_below_ma` / `volume_price_surge` / `ActivityValueGate`）：规则逻辑与阈值是你自己的配置，命名与描述也建议用你自己的说法，避免把仓库绑到任何人的品牌或课程内容上。
+> 公开仓库刻意使用**中性命名**（`tiered_pullback` / `needle_below_ma` / `volume_price_surge` / `ActivityValueGate`）：规则逻辑与阈值均由配置决定，命名与描述保持中性，不与任何个人品牌或课程内容绑定。
 
 **本期实测输出（dry-run，合成票池，交易日 2023-12-01）**
 
@@ -242,7 +242,7 @@ ashare-quant-lab/
 
 辅助指标（`src/aqlab/indicators_extra.py`）：`rsl`、`kdj`(9,3,3，J=3K-2D)、`amplitude`、`white_line`=EMA(EMA(C,10),10)、`yellow_line`=(MA14+MA28+MA57+MA114)/4、**`sma_tdx`（通达信 `SMA(X,N,M)`）**、**`brick_chart`（砖型图）**。
 
-### 砖型图（按你的公式逐行等价实现）
+### 砖型图（按给定公式逐行等价实现）
 
 ```
 VAR1A := (HHV(H,4) - C) / (HHV(H,4) - LLV(L,4)) * 100 - 90
@@ -564,7 +564,7 @@ python -m aqlab.cli quality --data-dir data/raw --max-gap-days 5 --cross-check d
 API：`check_frame` / `audit_universe` / `cross_source_diff` / `snapshot_hash`。
 **"没有换手率"标为 info 而不是 error**——因为相关规则会跳过该条件并注明，而不是偷偷用估计值。
 
-## 回测"自己实际推出去的名单"（v0.10）
+## 回测实际发布的名单（v0.10）
 
 不重新选股，直接读选股日志目录（`picks_YYYY-MM-DD.json`，按 b1/b2/b3/v3/n20/n30/fa/fb 分桶），
 用**次日开盘**入场、持有 h 日收盘出场，同一只票 5 个交易日内只算第一次（避免续持被重复统计），
