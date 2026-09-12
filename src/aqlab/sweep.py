@@ -48,7 +48,6 @@ class SweepConfig:
     test_days: int = 60
     step_days: int = 60
     min_history: int = 120
-    min_positions: float = 3.0
     method: str = "risk_parity"
     max_weight: float = 0.20
     cash_buffer: float = 0.20
@@ -59,8 +58,6 @@ class SweepConfig:
     def __post_init__(self) -> None:
         if self.main_horizon not in self.horizons:
             raise ValueError("main_horizon must be one of horizons")
-        if self.min_positions < 1:
-            raise ValueError("min_positions must be >= 1")
 
 
 @dataclass
@@ -205,22 +202,17 @@ def run_sweep(
                     "final_equity": summary.get("final_equity", float("nan")),
                     "sharpe": metrics.get("sharpe", float("nan")),
                     "max_drawdown": metrics.get("max_drawdown", float("nan")),
-                    "meets_target": float(summary.get("avg_positions", 0.0)) >= config.min_positions,
                 }
             )
     return pd.DataFrame(rows)
 
 
 def pick_best(table: pd.DataFrame, objective: str = "excess_mean") -> dict:
-    """在满足"平均持仓 ≥ 目标"的行里按目标指标取最优；都不满足时取持仓最多的。"""
+    """按目标指标直接取最优（持仓数只作为参考列展示，不设门槛）。"""
     if table.empty:
         return {}
-    qualified = table[table["meets_target"]]
-    if not qualified.empty:
-        best = qualified.sort_values(objective, ascending=False).iloc[0]
-        return {"row": best.to_dict(), "qualified": True, "objective": objective}
-    best = table.sort_values("avg_positions", ascending=False).iloc[0]
-    return {"row": best.to_dict(), "qualified": False, "objective": objective}
+    best = table.sort_values(objective, ascending=False).iloc[0]
+    return {"row": best.to_dict(), "objective": objective}
 
 
 def format_sweep(table: pd.DataFrame, config: SweepConfig | None = None, best: Mapping[str, Any] | None = None) -> str:
@@ -231,7 +223,7 @@ def format_sweep(table: pd.DataFrame, config: SweepConfig | None = None, best: M
         return "\n".join(lines)
 
     lines.append(
-        f"目标：**平均持仓 ≥ {config.min_positions:g} 只** 且主持有期 {config.main_horizon} 日的**超额均值**最大。"
+        f"排序目标：主持有期 {config.main_horizon} 日的**超额均值**最大（持仓数只作参考，不设门槛）。"
         f"（同期间基准；未扣滑点外的其他成本）"
     )
     lines.append("")
@@ -244,7 +236,7 @@ def format_sweep(table: pd.DataFrame, config: SweepConfig | None = None, best: M
             "excess_win_rate": "超额胜率%", "trades": "交易数", "trade_win_rate": "交易胜率%",
             "trade_excess": "单笔超额%", "windows_beating": "跑赢窗口", "avg_positions": "平均持仓",
             "total_cost": "累计成本", "final_equity": "期末净值", "sharpe": "Sharpe",
-            "max_drawdown": "最大回撤%", "meets_target": "达标",
+            "max_drawdown": "最大回撤%",
         }
     )
     lines.append(markdown_table(view))
@@ -252,18 +244,12 @@ def format_sweep(table: pd.DataFrame, config: SweepConfig | None = None, best: M
 
     if best:
         row = best.get("row", {})
-        if best.get("qualified"):
-            lines.append(
-                f"**建议配置**：`{row.get('params')}` @ {row.get('universe')} —— "
-                f"平均持仓 {row.get('avg_positions')} 只（达标），超额均值 {row.get('excess_mean', float('nan')) * 100:.2f}%，"
-                f"交易 {row.get('trades')} 笔，单笔超额 {row.get('trade_excess', float('nan')) * 100:.2f}%。"
-            )
-        else:
-            lines.append(
-                f"⚠️ **没有任何配置达到「平均持仓 ≥ {config.min_positions:g}」**："
-                f"持仓最多的是 `{row.get('params')}` @ {row.get('universe')}，"
-                f"平均 {row.get('avg_positions')} 只。应继续放宽信号或扩大票池。"
-            )
+        lines.append(
+            f"**建议配置**：`{row.get('params')}` @ {row.get('universe')} —— "
+            f"超额均值 {row.get('excess_mean', float('nan')) * 100:.2f}%，"
+            f"交易 {row.get('trades')} 笔，单笔超额 {row.get('trade_excess', float('nan')) * 100:.2f}%，"
+            f"平均持仓 {row.get('avg_positions')} 只（仅供参考）。"
+        )
     return "\n".join(lines)
 
 

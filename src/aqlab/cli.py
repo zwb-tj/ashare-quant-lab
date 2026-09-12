@@ -400,7 +400,6 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
         turnover_limit=args.turnover_limit,
         cost_bps=args.cost_bps,
         min_history=args.min_history,
-        min_positions=args.min_positions,
     )
     result = simulate_portfolio(universe, signals, config)
     exposure = None
@@ -439,7 +438,6 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         test_days=args.test_days,
         step_days=args.step_days,
         min_history=args.min_history,
-        min_positions=args.min_positions,
         method=args.method,
         max_weight=args.max_weight,
         cash_buffer=args.cash_buffer,
@@ -456,6 +454,70 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         paths = write_sweep(out, table, meta={"profile": args.profile or "generic", "sets": args.set or [], "sizes": sizes})
         (out / "sweep.md").write_text(format_sweep(table, config, best), encoding="utf-8")
         print(f"\n报告已写入：{out / 'sweep.md'}")
+    return 0
+
+
+def cmd_decide(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from aqlab.data import load_ohlcv_csv
+    from aqlab.intraday import IntradayConfig, confirm_signals, generate_synthetic_minutes, opening_volume_ratio
+    from aqlab.rules import build_rule
+    from aqlab.tables import markdown_table
+
+    daily = load_ohlcv_csv(args.daily_csv)
+    rule = build_rule(args.rule, **_parse_params(args.params))
+    signal = (rule.score(daily) > 0).reindex(daily.index).fillna(False)
+
+    if args.minute_csv:
+        minutes = pd.read_csv(args.minute_csv, parse_dates=["minute"]).set_index("minute")
+    else:
+        minutes = generate_synthetic_minutes(daily, seed=args.seed, first_minutes_boost=args.boost)
+        print("说明：未提供分钟数据，已用合成分钟线演示流程（真实使用请传 --minute-csv）")
+
+    config = IntradayConfig(window_minutes=args.window_minutes, baseline_days=args.baseline_days, min_ratio=args.min_ratio)
+    ratio = opening_volume_ratio(minutes, config)
+    table = confirm_signals(signal, ratio, config)
+
+    print(f"规则 {args.rule}｜信号 {int(signal.sum())} 个｜决策记录 {len(table)} 条")
+    if not table.empty:
+        print("决策分布：" + "、".join(f"{k} {v}" for k, v in table["decision"].value_counts().items()))
+        print(markdown_table(table.tail(args.show)))
+        valid = table[table["decision"].isin(["买入", "观望"])]
+        if len(valid):
+            print(f"确认率：{float((valid['decision'] == '买入').mean()):.1%}（买入 / 有量比数据）")
+    if args.out:
+        out = Path(args.out) / "decide"
+        out.mkdir(parents=True, exist_ok=True)
+        table.to_csv(out / "decisions.csv", index=False, encoding="utf-8-sig")
+        ratio.rename("volume_ratio").to_csv(out / "volume_ratio.csv", encoding="utf-8-sig")
+        print(f"明细已写入：{out}")
+    return 0
+
+
+def cmd_quality(args: argparse.Namespace) -> int:
+    from aqlab.quality import QualityConfig, audit_universe, cross_source_diff, format_audit, snapshot_hash, write_audit
+    from aqlab.tools import CsvDataSource
+
+    source = CsvDataSource(args.data_dir)
+    universe = {sym: source.bars(sym) for sym in source.symbols()}
+    config = QualityConfig(max_gap_days=args.max_gap_days, price_jump_pct=args.price_jump_pct, min_bars=args.min_bars)
+    table = audit_universe(universe, config)
+
+    diffs = []
+    if args.cross_check:
+        other = CsvDataSource(args.cross_check)
+        common = sorted(set(source.symbols()) & set(other.symbols()))[: args.cross_limit]
+        for symbol in common:
+            diffs.append(cross_source_diff(symbol, universe[symbol], other.bars(symbol), tolerance=args.tolerance))
+        if not common:
+            print("提示：两个目录没有同名标的，跳过交叉校验。")
+
+    hashes = {sym: snapshot_hash(df) for sym, df in list(universe.items())[:10]}
+    print(format_audit(table, diffs or None, hashes))
+    if args.out:
+        paths = write_audit(Path(args.out) / "quality", table, diffs, hashes)
+        print(f"报告已写入：{paths['markdown']}")
     return 0
 
 
@@ -585,7 +647,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_pf.add_argument("--turnover-limit", type=float, default=0.30)
     p_pf.add_argument("--cost-bps", type=float, default=5.0)
     p_pf.add_argument("--min-history", type=int, default=120)
-    p_pf.add_argument("--min-positions", type=float, default=3.0, help="diversification target; below it the report warns")
     p_pf.add_argument("--out", default=str(DEFAULT_OUT))
     p_pf.set_defaults(func=cmd_portfolio)
 
@@ -601,7 +662,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_sw.add_argument("--test-days", type=int, default=60)
     p_sw.add_argument("--step-days", type=int, default=60)
     p_sw.add_argument("--min-history", type=int, default=120)
-    p_sw.add_argument("--min-positions", type=float, default=3.0, help="diversification target for the portfolio layer")
     p_sw.add_argument("--method", choices=["equal", "inverse_vol", "risk_parity", "min_variance", "mean_variance"], default="risk_parity")
     p_sw.add_argument("--max-weight", type=float, default=0.20)
     p_sw.add_argument("--cash-buffer", type=float, default=0.20)
@@ -611,6 +671,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_sw.add_argument("--objective", default="excess_mean", help="column to maximise among rows meeting the target")
     p_sw.add_argument("--out", default=str(DEFAULT_OUT))
     p_sw.set_defaults(func=cmd_sweep)
+    p_dec = sub.add_parser("decide", help="confirm daily signals (e.g. B1) with the opening N-minute volume ratio")
+    p_dec.add_argument("--daily-csv", required=True)
+    p_dec.add_argument("--minute-csv", default=None, help="minute bars CSV with columns: minute,close,volume")
+    p_dec.add_argument("--rule", default="b1_graded")
+    p_dec.add_argument("--params", default=None)
+    p_dec.add_argument("--window-minutes", type=int, default=7)
+    p_dec.add_argument("--baseline-days", type=int, default=5)
+    p_dec.add_argument("--min-ratio", type=float, default=1.0)
+    p_dec.add_argument("--boost", type=float, default=1.0)
+    p_dec.add_argument("--seed", type=int, default=7)
+    p_dec.add_argument("--show", type=int, default=10)
+    p_dec.add_argument("--out", default=str(DEFAULT_OUT))
+    p_dec.set_defaults(func=cmd_decide)
+
+    p_q = sub.add_parser("quality", help="audit data quality (gaps, zero volume, price jumps, cross-source, hash)")
+    p_q.add_argument("--data-dir", required=True)
+    p_q.add_argument("--cross-check", default=None)
+    p_q.add_argument("--cross-limit", type=int, default=5)
+    p_q.add_argument("--tolerance", type=float, default=0.005)
+    p_q.add_argument("--max-gap-days", type=int, default=10)
+    p_q.add_argument("--price-jump-pct", type=float, default=0.11)
+    p_q.add_argument("--min-bars", type=int, default=60)
+    p_q.add_argument("--out", default=str(DEFAULT_OUT))
+    p_q.set_defaults(func=cmd_quality)
     return parser
 
 

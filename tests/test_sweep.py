@@ -65,17 +65,16 @@ def test_override_bindings_does_not_mutate_source():
 # --------------------------------------------------------------------------------------
 def test_run_sweep_grid_columns_and_determinism():
     universe = small_universe()
-    config = SweepConfig(horizons=(1, 5), main_horizon=5, test_days=60, step_days=60, min_history=120, min_positions=3.0)
+    config = SweepConfig(horizons=(1, 5), main_horizon=5, test_days=60, step_days=60, min_history=120)
     grids = parse_grid(["needle_rsl.short_max=20,25"])
     table = run_sweep({"6只": universe}, [("needle_rsl", {"long_min": 80.0}, 1.0)], grids, config)
 
     assert len(table) == 2
     for col in ("params", "universe", "signals", "excess_mean", "excess_win_rate", "trades",
                 "trade_win_rate", "trade_excess", "windows_beating", "avg_positions",
-                "total_cost", "final_equity", "sharpe", "max_drawdown", "meets_target"):
+                "total_cost", "final_equity", "sharpe", "max_drawdown"):
         assert col in table.columns
     assert table["signals"].sum() > 0
-    assert table["meets_target"].dtype == bool
 
     again = run_sweep({"6只": universe}, [("needle_rsl", {"long_min": 80.0}, 1.0)], grids, config)
     pd.testing.assert_frame_equal(table, again)
@@ -101,8 +100,6 @@ def test_run_sweep_validation():
 def test_sweep_config_validation():
     with pytest.raises(ValueError):
         SweepConfig(horizons=(1, 3), main_horizon=5)
-    with pytest.raises(ValueError):
-        SweepConfig(min_positions=0)
 
 
 # --------------------------------------------------------------------------------------
@@ -115,42 +112,35 @@ def make_table(rows):
                 "params": p, "universe": u, "signals": 10, "excess_mean": e, "excess_win_rate": w,
                 "trades": 5, "trade_win_rate": 0.5, "trade_excess": 0.0, "windows_beating": 1,
                 "avg_positions": pos, "total_cost": 0.01, "final_equity": 1.1, "sharpe": 1.0,
-                "max_drawdown": -0.05, "meets_target": pos >= 3,
+                "max_drawdown": -0.05,
             }
             for p, u, e, w, pos in rows
         ]
     )
 
 
-def test_pick_best_prefers_qualified_rows():
+def test_pick_best_takes_the_highest_objective():
     table = make_table(
         [
-            ("a", "40只", 0.01, 0.55, 1.0),    # 超额最高但不达标
-            ("b", "80只", 0.004, 0.52, 3.5),   # 达标
-            ("c", "120只", 0.006, 0.53, 4.0),  # 达标且超额更高
+            ("a", "40只", 0.01, 0.55, 1.0),    # 超额最高
+            ("b", "80只", 0.004, 0.52, 3.5),
+            ("c", "120只", 0.006, 0.53, 4.0),
         ]
     )
     best = pick_best(table, objective="excess_mean")
-    assert best["qualified"] is True
-    assert best["row"]["params"] == "c"
+    assert best["row"]["params"] == "a"
+    assert "objective" in best
 
 
-def test_pick_best_reports_when_nothing_qualifies():
-    table = make_table([("a", "40只", 0.01, 0.55, 1.0), ("b", "80只", 0.002, 0.51, 2.5)])
-    best = pick_best(table)
-    assert best["qualified"] is False
-    assert best["row"]["avg_positions"] == 2.5       # 取持仓最多的
+def test_pick_best_empty_table():
+    assert pick_best(pd.DataFrame()) == {}
 
 
 def test_format_sweep_marks_recommendation_and_warning():
-    config = SweepConfig(horizons=(1, 5), main_horizon=5, min_positions=3)
+    config = SweepConfig(horizons=(1, 5), main_horizon=5)
     qualified = make_table([("a", "80只", 0.004, 0.52, 3.5)])
     text = format_sweep(qualified, config, pick_best(qualified))
     assert "参数扫描报告" in text and "建议配置" in text and "超额均值%" in text
-
-    none_ok = make_table([("a", "40只", 0.004, 0.52, 1.2)])
-    text2 = format_sweep(none_ok, config, pick_best(none_ok))
-    assert "没有任何配置达到" in text2
 
     assert "没有可用的扫描结果" in format_sweep(pd.DataFrame(), config)
 

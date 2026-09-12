@@ -22,7 +22,7 @@
 # 1) 安装（可编辑模式，附开发依赖）
 pip install -e ".[dev]"
 
-# 2) 跑测试（196 个用例，全部离线，无需网络/API key）
+# 2) 跑测试（216 个用例，全部离线，无需网络/API key）
 pytest -q
 
 # 3) 三分钟看结果：内置策略在同一份合成行情上的对比
@@ -213,10 +213,12 @@ ashare-quant-lab/
 │   ├── agent.py           # 有界 plan-act-observe 代理循环 + trace + 两种 LLM 客户端
 │   ├── evaluation.py      # 评测集与指标：落地率/幻觉/弃答/回归一致性
 │   ├── tables.py          # 无依赖 markdown 表格（替代 pandas.to_markdown/tabulate）
+│   ├── intraday.py        # 开盘 N 分钟量比确认（B1 之外的第二道闸门）+ 合成分钟线
+│   ├── quality.py         # 数据质量审计：缺口/零成交/跳变/多源交叉/快照指纹
 │   ├── sweep.py           # 参数扫描：事件研究 + 滚动窗口 + 组合层三合一的格点对比
-│   └── cli.py             # demo/run/screen/fetch/eval/agent/daily/study/plan/walkforward/portfolio/sweep
+│   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
-├── tests/                 # 196 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
+├── tests/                 # 216 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
 ├── examples/              # 离线 demo 脚本 + 示例报告
 ├── docs/                  # 架构说明与路线图
 └── .github/workflows/     # CI：多 Python 版本跑 pytest
@@ -412,7 +414,7 @@ python -m aqlab.cli portfolio --profile zgnb_full --method risk_parity \
 方法 risk_parity｜再平衡 148 次｜平均持仓 1.34 只｜平均换手 0.125｜累计成本 0.024
 净值 1.7315｜总收益 73.15%｜年化 16.62%｜年化波动 5.43%｜Sharpe 2.861｜最大回撤 -3.94%
 集中度：HHI 0.4062 / 有效持仓数 2.46｜风格：加权年化波动 9.03%、动量 2.45%、beta 0.407
-> ⚠️ 体检提示：平均持仓仅 1.3 只，分散度不足（建议 ≥5 只）：组合层无法弥补信号层过于稀疏
+> 说明：平均持仓 1.3 只，属于高集中度组合：单一标的风险占比较大（不设持仓目标，持仓数是结果）
 ```
 
 **这条警告是这层最有用的产出**：`zgnb_full` 的信号太严，148 次再平衡平均只拿 1.3 只票——组合优化再漂亮也救不了稀疏的信号。把票池从 40 扩到 80、单票上限放宽到 10% 后平均持仓升到 2.9 只，**仍然不够分散**。所以下一步该动的是**信号层的宽松度**，而不是继续调权重算法。（合成数据的绩效数字只用于验证流程，**不代表真实市场**。）
@@ -424,7 +426,7 @@ python -m aqlab.cli portfolio --profile zgnb_full --method risk_parity \
 ```bash
 python -m aqlab.cli sweep --profile zgnb_full \
     --set b1_graded.j_max=13,20,30 --set b1_graded.spike_multiple=2.0,1.8 \
-    --sizes 40,80 --days 900 --main-horizon 5 --min-positions 3
+    --sizes 40,80 --days 900 --main-horizon 5
 ```
 
 实测（合成 900 天，12 个格点，节选）：
@@ -442,7 +444,62 @@ python -m aqlab.cli sweep --profile zgnb_full \
 2. **放宽 `j_max` 是"数量换质量"**：13 → 30 让平均持仓 3.04 → 3.51，但超额均值 0.10% → 0.08%、超额胜率 -2.01% → -2.22%。
 3. **换个票池就翻符号**：40 只票池上 study 超额胜率 **+2.26%**，80 只票池上变成 **-2.0% ~ -2.9%**，单笔超额在所有格点都是负的。所以扫描工具的价值不是给出"最优参数"，而是**暴露结论的脆弱性**。
 
-据此新增档案 **`zgnb_full_v2`**（`j_max=20`、`spike_multiple=1.8`，建议配合 80 只以上票池），原 `zgnb_full` 保留对照；组合层分散度目标变成可配置项（`--min-positions`，默认 3）。
+据此新增档案 **`zgnb_full_v2`**（`j_max=20`、`spike_multiple=1.8`），原 `zgnb_full` 保留对照。组合层报告只如实给出平均持仓与集中度说明——**不设持仓目标**（持仓数是结果，不是目标）。
+
+## 开盘量比确认：B1 只说"超跌"，买不买要看增量资金（v0.8）
+
+B1 只能说明**它跌得多**；如果次日开盘没有增量资金进来，它可能继续阴跌。所以买入要多一道确认：**开盘后前 N 分钟的量比**。
+
+```
+量比 = 当日开盘 N 分钟累计成交量 ÷ 过去 M 日同一窗口累计成交量均值（默认 7 分钟 / 5 日）
+量比 ≥ 阈值（默认 1.0）→ 有增量资金 → 放行买入
+量比 <  阈值            → 无量能确认 → 观望
+次日分钟数据缺失/不足    → 明确"无法判断"，不猜
+```
+
+```bash
+python -m aqlab.cli decide --daily-csv data/raw/600519.csv --minute-csv data/raw/600519_min.csv \
+    --rule b1_graded --window-minutes 7 --baseline-days 5 --min-ratio 1.0
+python -m aqlab.cli decide --daily-csv data/raw/600519.csv --rule b1_opportunity --boost 2.5   # 无分钟数据时用合成线演示
+```
+
+实测（`b1_opportunity` + 合成分钟线）：
+
+```
+规则 b1_opportunity｜信号 9 个｜决策记录 9 条
+决策分布：观望 8、买入 1
+| signal_date | decision_date | volume_ratio | decision | reason |
+| 2022-05-24 | 2022-05-25 | 0.877 | 观望 | 开盘 7 分钟量比 0.88 < 1，无量能确认 |
+| 2022-10-28 | 2022-10-31 | 0.661 | 观望 | 开盘 7 分钟量比 0.66 < 1，无量能确认 |
+确认率：11.1%（买入 / 有量比数据）
+```
+
+**因果性**：信号来自 `t` 日收盘，量比来自 `t+1` 日开盘前 7 分钟——信号日与决策日分离，**不存在未来函数**（有测试断言决策日必定晚于信号日）。
+
+> ⚠️ **合成数据的边界**：合成分钟线是全期统一放量，而量比是相对量（自己当自己的基准），统一放量不会改变量比——
+> 它只能验证流程，**不能验证"量比是否有效"**。真实结论必须用真实分钟数据（`--minute-csv`）。
+> 本模块只做"买不买"的确认，不涉及盘中执行细节。
+
+## 数据质量审计（v0.7）
+
+在相信任何结论之前，先查数据：索引单调/重复、日历缺口、零成交占比、异常跳变（疑似未复权/脏数据）、历史长度、
+OHLC 缺失、是否带真实换手率，并支持**多源交叉校验**与**数据指纹**（sha256 前 16 位）。
+
+```bash
+python -m aqlab.cli quality --data-dir data/raw --max-gap-days 5 --cross-check data/raw_akshare
+```
+
+实测（4 只票，其中 1 只被注入 20 天缺口）：
+
+```
+标的数 4｜有 error 的标的 0｜有 warning 的标的 1｜缺少换手率的标的 4
+| symbol | bars | first | last | errors | warnings | issue_types  | details |
+| SYN001 |  280 | 2022-01-03 | 2023-02-24 | 0 | 1 | calendar_gap | 最大间隔 31 天，共 1 处超过 5 天 |
+| 600519 |  300 | 2022-01-03 | 2023-02-24 | 0 | 0 | -            | - |
+```
+
+API：`check_frame` / `audit_universe` / `cross_source_diff` / `snapshot_hash`。
+**"没有换手率"标为 info 而不是 error**——因为相关规则会跳过该条件并注明，而不是偷偷用估计值。
 
 ## 路线图
 
@@ -451,8 +508,9 @@ python -m aqlab.cli sweep --profile zgnb_full \
 - ✅ **v0.4.x** 个人策略集：B1 梯度打分（5 硬 4 软）、单针下20/30（RSL 口径）、量价齐升V3、0AMV 波段开关、砖型图（含绿转红 XG 与红砖门）、持仓/离场管理、规则事件研究、滚动窗口校验、真实换手率接入。
 - ✅ **v0.5** 组合层：五种权重方法 + 现金缓冲/单票上限/换手上限 + 份额记账与再平衡成本 + 暴露与分散度体检。
 - ✅ **v0.6** 参数扫描：三合一格点对比 + 达标选优，实测跑出"扩池 > 调阈值"的结论并新增 `zgnb_full_v2` 档案。
-- **v0.7** 数据质量：缺口/停牌/复权一致性检查，多源交叉校验。
-- **v0.8** 可视化报告：净值/回撤/因子贡献图。
+- ✅ **v0.7** 数据质量：缺口/零成交/异常跳变/多源交叉/快照指纹（`aqlab quality`）。
+- ✅ **v0.8** 开盘量比确认：7 分钟量比闸门 + 决策表 + 因果性测试（`aqlab decide`），并写明合成数据边界。
+- **v0.9** 可视化报告：净值/回撤/因子贡献图。
 
 
 详见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

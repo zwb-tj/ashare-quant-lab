@@ -59,7 +59,6 @@ class PortfolioConfig:
     shrinkage: float = 0.10        # 协方差向对角矩阵收缩
     risk_aversion: float = 1.0
     min_history: int = 120
-    min_positions: float = 3.0     # 分散度目标：平均持仓低于它就在报告里报警
 
     def __post_init__(self) -> None:
         if self.method not in METHODS:
@@ -82,8 +81,6 @@ class PortfolioConfig:
             raise ValueError("risk_aversion must be > 0")
         if self.min_history < 20:
             raise ValueError("min_history must be >= 20")
-        if self.min_positions < 1:
-            raise ValueError("min_positions must be >= 1")
 
 
 # --------------------------------------------------------------------------------------
@@ -434,20 +431,20 @@ def simulate_portfolio(
         "total_cost": round(float(sum(r["cost"] for r in rebalances)), 6),
         "final_equity": round(float(frame["value"].iloc[-1]), 4),
     }
-    # 分散度体检：组合层无法弥补信号层过于稀疏
+    # 分散度陈述（不设目标，只如实说明集中度）
     if rebalances:
         budget = 1.0 - config.cash_buffer
         avg_positions = float(np.mean([r["positions"] for r in rebalances]))
         avg_gross = float(np.mean([r["gross_exposure"] for r in rebalances]))
-        if avg_positions < config.min_positions:
-            summary["warning"] = (
-                f"平均持仓仅 {avg_positions:.1f} 只，低于目标 {config.min_positions:g} 只："
-                "组合层无法弥补信号层过于稀疏，应放宽规则或扩大票池"
+        summary["avg_positions"] = round(avg_positions, 2)
+        if avg_positions <= 2:
+            summary["concentration_note"] = (
+                f"平均持仓 {avg_positions:.1f} 只，属于高集中度组合：单一标的风险占比较大"
             )
-        elif avg_gross < 0.5 * budget:
-            summary["warning"] = (
-                f"平均仓位 {avg_gross:.0%} 远低于预算 {budget:.0%}：单票上限 {config.max_weight:.0%} "
-                "限制了小票池的可投比例，考虑放宽上限或扩大票池"
+        if avg_gross < 0.5 * budget:
+            summary["exposure_note"] = (
+                f"平均仓位 {avg_gross:.0%} 低于预算 {budget:.0%}：单票上限 {config.max_weight:.0%} "
+                "限制了小票池的可投比例"
             )
     return {"frame": frame, "rebalances": pd.DataFrame(rebalances), "metrics": metrics, "summary": summary}
 
@@ -473,13 +470,14 @@ def format_portfolio_report(result: Mapping[str, Any], exposure: Mapping[str, An
     lines.append("| 指标 | 值 |")
     lines.append("| --- | ---: |")
     for key, value in summary.items():
-        if key == "warning":
+        if key.endswith("_note"):
             continue
         lines.append(f"| {key} | {value} |")
     lines.append("")
-    if summary.get("warning"):
-        lines.append(f"> ⚠️ **体检提示**：{summary['warning']}")
-        lines.append("")
+    for key in ("concentration_note", "exposure_note"):
+        if summary.get(key):
+            lines.append(f"> 说明：{summary[key]}")
+            lines.append("")
 
     rebalances = result.get("rebalances")
     if rebalances is not None and not rebalances.empty:

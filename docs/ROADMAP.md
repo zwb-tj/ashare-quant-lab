@@ -159,12 +159,23 @@
 5. **组合层目标**：`PortfolioConfig.min_positions`（默认 3）与 CLI `--min-positions`；低于目标时报告报警。
 6. **测试**：11 个新用例（网格解析/覆盖不改原档案/笛卡尔积/确定性与列完整性/选择逻辑两条路径/渲染/落盘/参数校验），全套 **196** 个用例离线通过。
 
-## v0.7 · 数据质量
-- 缺口/停牌/涨跌停/复权一致性检查
-- 多数据源交叉校验与差异报告
-- 数据版本快照（parquet + 校验和）
+## v0.7 · 数据质量审计（✅ 已完成，2026-09）
 
-## v0.8 · 报告与可视化
+- `src/aqlab/quality.py`：`check_frame`（索引单调/重复、日历缺口、零成交占比、异常跳变、历史长度、OHLC 缺失、换手率缺失标为 info）、`audit_universe`（按 error/warning 排序）、`cross_source_diff`（两源差异率 + 最差样本）、`snapshot_hash`（规范化 sha256 前 16 位）、`format_audit` / `write_audit`。
+- CLI：`aqlab quality --data-dir DIR [--cross-check DIR2]` → `audit.md / audit.csv / audit.json`。
+- 测试：11 个新用例（干净数据只有 info、重复/乱序/历史不足、缺口/零成交/跳变、缺失值、空表、票池排序、两源一致/有差异/无重叠、指纹稳定且敏感、参数校验、渲染与落盘）。
+
+## v0.8 · 开盘量比确认（✅ 已完成，2026-09）
+
+**动机**：B1 只说明"超跌"；若次日开盘没有增量资金，可能继续阴跌 → 买入需要第二道确认。
+
+- `src/aqlab/intraday.py`：`opening_window_volume`、`opening_volume_ratio`（shift(1)，不用当日）、`confirm_signals`（买入/观望/无法判断，缺失即弃答）、`confirmed_signal_series`（映射到决策日）、`generate_synthetic_minutes`（U 形分钟线，保持日成交量）。
+- CLI：`aqlab decide --daily-csv ... [--minute-csv ...] --window-minutes 7 --min-ratio 1.0`。
+- 同步调整：`aqlab sweep` 去掉"平均持仓 ≥3"的达标门槛；`PortfolioConfig` 移除目标字段，改为中性集中度说明。
+- 测试：9 个新用例（窗口量、量比只用历史、三条决策分支、决策日晚于信号日、确认序列映射、合成分钟线守恒与确定性、参数校验），全套 **216** 个用例离线通过。
+- 诚实边界：合成分钟线全期统一放量 → 量比自我归一化 → **只能验证流程，不能验证有效性**。
+
+## v0.9 · 可视化报告
 - 净值 / 回撤 / 月度收益热力图 / 因子贡献分解
 - HTML 报告（离线自包含）
 
