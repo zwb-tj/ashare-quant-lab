@@ -21,6 +21,7 @@ import pandas as pd
 __all__ = [
     "IntradayConfig",
     "opening_window_volume",
+    "opening_window_price",
     "opening_volume_ratio",
     "confirm_signals",
     "confirmed_signal_series",
@@ -47,11 +48,8 @@ class IntradayConfig:
             raise ValueError("min_ratio must be > 0")
 
 
-def opening_window_volume(minute_bars: pd.DataFrame, config: IntradayConfig | None = None) -> pd.Series:
-    """每个交易日在开盘窗口内的累计成交量。"""
-    config = config or IntradayConfig()
-    if minute_bars.empty or "volume" not in minute_bars.columns:
-        raise ValueError("minute_bars must contain a 'volume' column")
+def _window_frame(minute_bars: pd.DataFrame, config: IntradayConfig) -> pd.DataFrame:
+    """准备分钟数据并切出每日开盘窗口内的那几根 K 线。"""
     frame = minute_bars.copy()
     if not isinstance(frame.index, pd.DatetimeIndex):
         if "minute" in frame.columns:
@@ -62,8 +60,27 @@ def opening_window_volume(minute_bars: pd.DataFrame, config: IntradayConfig | No
     frame = frame.sort_index()
     frame["_date"] = frame.index.normalize()
     frame["_rank"] = frame.groupby("_date").cumcount()
-    window = frame[frame["_rank"] < config.window_minutes]
-    return window.groupby("_date")["volume"].sum().sort_index()
+    return frame[frame["_rank"] < config.window_minutes]
+
+
+def opening_window_volume(minute_bars: pd.DataFrame, config: IntradayConfig | None = None) -> pd.Series:
+    """每个交易日在开盘窗口内的累计成交量。"""
+    config = config or IntradayConfig()
+    if minute_bars.empty or "volume" not in minute_bars.columns:
+        raise ValueError("minute_bars must contain a 'volume' column")
+    return _window_frame(minute_bars, config).groupby("_date")["volume"].sum().sort_index()
+
+
+def opening_window_price(minute_bars: pd.DataFrame, config: IntradayConfig | None = None) -> pd.Series:
+    """每个交易日开盘窗口**最后一根**分钟 K 的收盘价（默认 7 分钟即 09:37）。
+
+    这是"看到量比之后立刻下单"的成交价，比用当日收盘价更贴近实盘，也避免用信号日收盘价
+    去评估一个次日才做出的决策。
+    """
+    config = config or IntradayConfig()
+    if minute_bars.empty or "close" not in minute_bars.columns:
+        raise ValueError("minute_bars must contain a 'close' column")
+    return _window_frame(minute_bars, config).groupby("_date")["close"].last().sort_index()
 
 
 def opening_volume_ratio(minute_bars: pd.DataFrame, config: IntradayConfig | None = None) -> pd.Series:

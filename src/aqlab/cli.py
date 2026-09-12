@@ -601,6 +601,7 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
     import pandas as pd
 
     from aqlab.confirm_eval import ConfirmEvalConfig, evaluate_confirmation, summarize_confirmation
+    from aqlab.confirm_eval import attach_benchmark as attach_confirm_benchmark
     from aqlab.data import load_ohlcv_csv
     from aqlab.picks import (
         PickBacktestConfig,
@@ -710,20 +711,29 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
             baseline_days=args.baseline_days,
             min_ratio=args.min_ratio,
             horizons=config.horizons,
+            entry=args.confirm_entry,
         )
         window = unique[(unique["date"] >= pd.Timestamp(args.confirm_start)) & (unique["date"] <= pd.Timestamp(args.confirm_end))]
+        confirm_buckets = tuple(b.strip() for b in args.confirm_buckets.split(",") if b.strip())
+        window = window[window["bucket"].isin(confirm_buckets)]
         print()
-        print(f"量比确认评估：窗口 {args.confirm_start} ~ {args.confirm_end}｜候选 {len(window)} 条")
+        print(f"量比确认评估：窗口 {args.confirm_start} ~ {args.confirm_end}｜分桶 {list(confirm_buckets)}｜候选 {len(window)} 条｜入场 {ce_config.entry}")
+        minute_start = (pd.Timestamp(args.confirm_start) - pd.Timedelta(days=20)).strftime("%Y%m%d")
+        minute_end = (pd.Timestamp(args.confirm_end) + pd.Timedelta(days=7)).strftime("%Y%m%d")
+        skipped: list[str] = []
         for symbol, group in window.groupby("symbol"):
             if symbol not in daily:
+                skipped.append(symbol)
                 continue
             minute_path = cache / f"{symbol}_min.csv"
             if not minute_path.exists() or args.refresh:
                 try:
-                    minute = fetch_minute(symbol, args.confirm_start.replace("-", ""), args.confirm_end.replace("-", ""))
+                    minute = fetch_minute(symbol, minute_start, minute_end)
                 except Exception:  # noqa: BLE001
+                    skipped.append(symbol)
                     continue
                 if minute.empty:
+                    skipped.append(symbol)
                     continue
                 minute.rename_axis("minute").reset_index()[["minute", "close", "volume"]].to_csv(
                     minute_path, index=False, encoding="utf-8-sig"
@@ -734,14 +744,33 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
             details, _ratio = evaluate_confirmation(daily[symbol], minute, signal, ce_config, symbol=symbol)
             if not details.empty:
                 details_tables.append(details)
+        if skipped:
+            print(f"（{len(skipped)} 只没有可用分钟数据，已跳过：{skipped[:5]}）")
         if details_tables:
             merged = pd.concat(details_tables, ignore_index=True)
+            if basket:
+                # 口径对齐：个股在决策日 9:37 买入，篮子用**决策日开盘价**买入（差几分钟，量级可忽略），
+                # 两侧都在第 h 个交易日的收盘卖出；用 next_close 会让 bench_1 恒等于 0。
+                ce_bench = benchmark_returns(
+                    basket, merged["entry_date"].dropna().unique(), PickBacktestConfig(horizons=ce_config.horizons, entry="next_open")
+                )
+                merged = attach_confirm_benchmark(merged, ce_bench)
             confirm_summary = summarize_confirmation(merged, ce_config)
             view = confirm_summary.copy()
+            has_ce_bench = any(f"excess_{h}" in view.columns for h in ce_config.horizons)
             for horizon in ce_config.horizons:
                 view[f"mean_{horizon}"] = (view[f"mean_{horizon}"].astype(float) * 100).round(2)
                 view[f"win_{horizon}"] = (view[f"win_{horizon}"].astype(float) * 100).round(1)
+                if has_ce_bench:
+                    view[f"bench_{horizon}"] = (view[f"bench_{horizon}"].astype(float) * 100).round(2)
+                    view[f"excess_{horizon}"] = (view[f"excess_{horizon}"].astype(float) * 100).round(2)
+                    view[f"excesswin_{horizon}"] = (view[f"excesswin_{horizon}"].astype(float) * 100).round(1)
             print(markdown_table(view.rename(columns={"decision": "决策", "signals": "信号数"})))
+            if args.out:
+                confirm_out = Path(args.out) / "picks_backtest"
+                confirm_out.mkdir(parents=True, exist_ok=True)
+                merged.to_csv(confirm_out / "confirm_details.csv", index=False, encoding="utf-8-sig")
+                confirm_summary.to_csv(confirm_out / "confirm_summary.csv", index=False, encoding="utf-8-sig")
         else:
             print("（窗口内没有可评估的分钟数据）")
 
@@ -959,8 +988,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_pb.add_argument("--data-end", default="20260930")
     p_pb.add_argument("--refresh", action="store_true", help="re-fetch bars even if cached")
     p_pb.add_argument("--confirm", action="store_true", help="also evaluate the opening volume-ratio gate")
+    p_pb.add_argument("--confirm-buckets", default="b1", help="which buckets the volume-ratio gate is evaluated on")
+    p_pb.add_argument(
+        "--confirm-entry",
+        default="window_close",
+        choices=["window_close", "decision_close", "signal_close"],
+        help="window_close = buy at the close of the opening window (default, no lookahead)",
+    )
     p_pb.add_argument("--confirm-start", default="2026-06-17")
-    p_pb.add_argument("--confirm-end", default="2026-08-07")
+    p_pb.add_argument("--confirm-end", default="2026-09-10")
     p_pb.add_argument("--window-minutes", type=int, default=7)
     p_pb.add_argument("--baseline-days", type=int, default=5)
     p_pb.add_argument("--min-ratio", type=float, default=1.0)
