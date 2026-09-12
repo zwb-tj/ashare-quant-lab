@@ -53,6 +53,11 @@ def opening_window_volume(minute_bars: pd.DataFrame, config: IntradayConfig | No
     if minute_bars.empty or "volume" not in minute_bars.columns:
         raise ValueError("minute_bars must contain a 'volume' column")
     frame = minute_bars.copy()
+    if not isinstance(frame.index, pd.DatetimeIndex):
+        if "minute" in frame.columns:
+            frame = frame.set_index("minute")
+        else:
+            raise ValueError("minute_bars must be indexed by datetime (or contain a 'minute' column)")
     frame.index = pd.to_datetime(frame.index)
     frame = frame.sort_index()
     frame["_date"] = frame.index.normalize()

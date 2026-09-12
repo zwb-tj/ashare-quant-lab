@@ -521,6 +521,81 @@ def cmd_quality(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stockdb_export(args: argparse.Namespace) -> int:
+    from aqlab.stockdb import export_sample
+
+    symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+    written = export_sample(
+        symbols,
+        args.daily_start,
+        args.daily_end,
+        args.out,
+        minute_start=args.minute_start,
+        minute_end=args.minute_end,
+        fq=args.fq,
+    )
+    for symbol, paths in written.items():
+        detail = ", ".join(f"{p.name}({p.stat().st_size // 1024}KB)" for p in paths)
+        print(f"{symbol}: {detail}")
+    print(f"共导出 {len(written)} 只 -> {args.out}")
+    return 0
+
+
+def cmd_confirm_eval(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from aqlab.confirm_eval import ConfirmEvalConfig, evaluate_confirmation, summarize_confirmation
+    from aqlab.data import load_ohlcv_csv
+    from aqlab.rules import build_rule
+    from aqlab.tables import markdown_table
+
+    rule = build_rule(args.rule, **_parse_params(args.params))
+    config = ConfirmEvalConfig(
+        window_minutes=args.window_minutes,
+        baseline_days=args.baseline_days,
+        min_ratio=args.min_ratio,
+        horizons=tuple(int(h) for h in args.horizons.split(",") if h.strip()),
+    )
+    data_dir = Path(args.data_dir)
+    details_list = []
+    for path in sorted(data_dir.glob("*.csv")):
+        if path.stem.endswith("_min"):
+            continue
+        symbol = path.stem
+        daily = load_ohlcv_csv(path)
+        minute_path = data_dir / f"{symbol}_min.csv"
+        minute = (
+            pd.read_csv(minute_path, parse_dates=["minute"]).set_index("minute")
+            if minute_path.exists()
+            else pd.DataFrame()
+        )
+        signal = (rule.score(daily) > 0).reindex(daily.index).fillna(False)
+        details, _ratio = evaluate_confirmation(daily, minute, signal, config, symbol=symbol)
+        if not details.empty:
+            details_list.append(details)
+
+    if not details_list:
+        print("没有可评估的信号（检查数据目录与规则）。")
+        return 0
+
+    merged = pd.concat(details_list, ignore_index=True)
+    summary = summarize_confirmation(merged, config)
+    view = summary.copy()
+    for horizon in config.horizons:
+        view[f"mean_{horizon}"] = (view[f"mean_{horizon}"].astype(float) * 100).round(2)
+        view[f"win_{horizon}"] = (view[f"win_{horizon}"].astype(float) * 100).round(1)
+    view = view.rename(columns={"decision": "决策", "signals": "信号数"})
+    print(f"规则 {args.rule}｜窗口 {config.window_minutes} 分钟｜量比阈值 {config.min_ratio:g}")
+    print(markdown_table(view))
+    if args.out:
+        out = Path(args.out) / "confirm_eval"
+        out.mkdir(parents=True, exist_ok=True)
+        merged.to_csv(out / "signals.csv", index=False, encoding="utf-8-sig")
+        summary.to_csv(out / "summary.csv", index=False, encoding="utf-8-sig")
+        print(f"明细已写入：{out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -695,6 +770,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_q.add_argument("--min-bars", type=int, default=60)
     p_q.add_argument("--out", default=str(DEFAULT_OUT))
     p_q.set_defaults(func=cmd_quality)
+    p_se = sub.add_parser("stockdb-export", help="export a small daily+minute sample from the local stockdb")
+    p_se.add_argument("--symbols", required=True, help="comma separated, e.g. 600519,000001")
+    p_se.add_argument("--daily-start", required=True)
+    p_se.add_argument("--daily-end", required=True)
+    p_se.add_argument("--minute-start", default=None)
+    p_se.add_argument("--minute-end", default=None)
+    p_se.add_argument("--fq", default="qfq", choices=["qfq", "hfq", "none"])
+    p_se.add_argument("--out", default="data/raw")
+    p_se.set_defaults(func=cmd_stockdb_export)
+
+    p_ce = sub.add_parser("confirm-eval", help="does the opening volume-ratio gate improve B1 signals? (real minute data)")
+    p_ce.add_argument("--data-dir", required=True, help="directory with {symbol}.csv and {symbol}_min.csv")
+    p_ce.add_argument("--rule", default="b1_opportunity")
+    p_ce.add_argument("--params", default=None)
+    p_ce.add_argument("--window-minutes", type=int, default=7)
+    p_ce.add_argument("--baseline-days", type=int, default=5)
+    p_ce.add_argument("--min-ratio", type=float, default=1.0)
+    p_ce.add_argument("--horizons", default="1,3,5")
+    p_ce.add_argument("--out", default=str(DEFAULT_OUT))
+    p_ce.set_defaults(func=cmd_confirm_eval)
     return parser
 
 

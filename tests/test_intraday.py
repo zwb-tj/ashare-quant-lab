@@ -163,3 +163,14 @@ def test_generate_synthetic_minutes_keeps_daily_volume():
     share_boost = opening_window_volume(boosted, cfg) / daily["volume"].reindex(opening_window_volume(boosted, cfg).index)
     # 开盘窗口量占比被抬高（量比本身会自我归一化，所以比较占比而不是比均值）
     assert share_boost.mean() > share_plain.mean()
+
+
+def test_minute_bars_can_come_as_a_column_instead_of_index():
+    """RangeIndex（忘记 set_index）必须被拦住或自动纠正，否则会被当成 1970 年静默失效。"""
+    bars = minutes_for_day("2024-01-02", [10.0] * 20).reset_index().rename(columns={"index": "minute"})
+    volume = opening_window_volume(bars, IntradayConfig(window_minutes=7))
+    assert volume.iloc[0] == pytest.approx(70.0)
+
+    bad = pd.DataFrame({"close": [1.0], "volume": [1.0]})
+    with pytest.raises(ValueError):
+        opening_window_volume(bad, IntradayConfig(window_minutes=7))

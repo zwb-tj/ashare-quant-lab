@@ -27,7 +27,7 @@ from aqlab.study import forward_returns, rule_event_study, study_profile
 from aqlab.sweep import SweepConfig, parse_grid, pick_best, run_sweep
 from aqlab.tools import ToolRegistry, default_registry
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "BacktestConfig",
