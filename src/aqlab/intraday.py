@@ -23,6 +23,7 @@ __all__ = [
     "opening_window_volume",
     "opening_window_price",
     "opening_volume_ratio",
+    "standard_volume_ratio",
     "confirm_signals",
     "confirmed_signal_series",
     "generate_synthetic_minutes",
@@ -38,6 +39,7 @@ class IntradayConfig:
     window_minutes: int = 7
     baseline_days: int = 5
     min_ratio: float = 1.0
+    session_minutes: int = 240          # 一个交易日有多少分钟（软件量比的分母口径）
 
     def __post_init__(self) -> None:
         if self.window_minutes < 1:
@@ -46,6 +48,8 @@ class IntradayConfig:
             raise ValueError("baseline_days must be >= 1")
         if self.min_ratio <= 0:
             raise ValueError("min_ratio must be > 0")
+        if self.session_minutes < 1:
+            raise ValueError("session_minutes must be >= 1")
 
 
 def _window_frame(minute_bars: pd.DataFrame, config: IntradayConfig) -> pd.DataFrame:
@@ -84,11 +88,46 @@ def opening_window_price(minute_bars: pd.DataFrame, config: IntradayConfig | Non
 
 
 def opening_volume_ratio(minute_bars: pd.DataFrame, config: IntradayConfig | None = None) -> pd.Series:
-    """量比序列：当日窗口量 ÷ 过去 ``baseline_days`` 日窗口量均值（不含当日）。"""
+    """量比序列（**相对口径**）：当日窗口量 ÷ 过去 ``baseline_days`` 日**同一窗口**量均值（不含当日）。
+
+    这是"相对自己最近几个早晨"的增量口径，回答的是"今天的开盘比平时更活跃吗"。
+    行情软件上显示的"量比"是另一个口径，见 :func:`standard_volume_ratio`。
+    """
     config = config or IntradayConfig()
     window_volume = opening_window_volume(minute_bars, config)
     baseline = window_volume.shift(1).rolling(config.baseline_days, min_periods=config.baseline_days).mean()
     return (window_volume / baseline.replace(0.0, np.nan)).rename("volume_ratio")
+
+
+def standard_volume_ratio(
+    minute_bars: pd.DataFrame,
+    daily: pd.DataFrame | pd.Series,
+    config: IntradayConfig | None = None,
+) -> pd.Series:
+    """量比序列（**软件口径**）：当日开盘窗口每分钟均量 ÷ 过去 ``baseline_days`` 日**全天**每分钟均量。
+
+    ``量比 = (窗口成交量 / 窗口分钟数) / (过去 N 日日均成交量 / session_minutes)``
+
+    这个口径与行情软件屏幕上显示的"量比"一致：普通股票在 1.5~2.5 之间，
+    有异动的热门股才会到 4 以上。两个口径不能混用阈值。
+    ``daily`` 可以是日线 DataFrame（含 ``volume`` 列）或日成交量 Series；索引为交易日。
+    """
+    config = config or IntradayConfig()
+    window_volume = opening_window_volume(minute_bars, config)
+    if isinstance(daily, pd.Series):
+        daily_volume = daily.astype(float)
+    else:
+        if "volume" not in daily.columns:
+            raise ValueError("daily must contain a 'volume' column")
+        daily_volume = daily["volume"].astype(float)
+    daily_volume = daily_volume.copy()
+    daily_volume.index = pd.to_datetime(daily_volume.index)
+    daily_volume = daily_volume.sort_index()
+    baseline = daily_volume.rolling(config.baseline_days, min_periods=config.baseline_days).mean().shift(1)
+    baseline = baseline.reindex(window_volume.index)
+    ratio = (window_volume / config.window_minutes) / (baseline / config.session_minutes)
+    return ratio.replace([np.inf, -np.inf], np.nan).rename("standard_volume_ratio")
+
 
 
 def confirm_signals(

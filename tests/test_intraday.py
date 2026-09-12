@@ -11,7 +11,9 @@ from aqlab.intraday import (
     confirmed_signal_series,
     generate_synthetic_minutes,
     opening_volume_ratio,
+    opening_window_price,
     opening_window_volume,
+    standard_volume_ratio,
 )
 
 
@@ -57,6 +59,53 @@ def test_opening_volume_ratio_uses_previous_days_only():
     assert ratio.iloc[-2] == pytest.approx(1.0)
 
 
+def test_standard_volume_ratio_matches_the_screen_formula():
+    """软件口径：窗口每分钟均量 ÷ 过去 5 日全天每分钟均量。
+
+    前两天：窗口量 70（前 7 根各 10），日总量 700 -> 全天每分钟 = 700/240
+    第 6 天：窗口量 70，过去 5 日日均 700 -> 量比 = (70/7)/(700/240) = 240/70 ≈ 3.43
+    """
+    bars = two_week_minutes()
+    days = pd.bdate_range("2024-01-01", periods=10)
+    daily_volume = pd.Series([700.0] * 9 + [700.0], index=days)
+    config = IntradayConfig(window_minutes=7, baseline_days=5)
+    ratio = standard_volume_ratio(bars, daily_volume, config)
+    assert ratio.iloc[:5].isna().all()
+    assert ratio.iloc[5] == pytest.approx((70.0 / 7) / (700.0 / 240.0))
+    # 最后一天窗口量 210（3 倍）-> 量比也是 3 倍
+    assert ratio.iloc[-1] == pytest.approx(3 * (70.0 / 7) / (700.0 / 240.0))
+
+
+def test_standard_volume_ratio_is_larger_than_the_relative_one():
+    """两种口径不能混用阈值：放量日软件口径明显更大（分母是全天均量，不是开盘窗口均量）。"""
+    bars = two_week_minutes()
+    days = pd.bdate_range("2024-01-01", periods=10)
+    daily_volume = pd.Series([700.0] * 10, index=days)
+    config = IntradayConfig(window_minutes=7, baseline_days=5)
+    standard = standard_volume_ratio(bars, daily_volume, config)
+    relative = opening_volume_ratio(bars, config)
+    assert standard.iloc[-1] > relative.iloc[-1] >= 3.0
+    assert standard.iloc[-1] == pytest.approx(3.0 * 240.0 / 70.0)
+
+
+def test_standard_volume_ratio_accepts_a_daily_frame_and_rejects_missing_volume():
+    bars = two_week_minutes()
+    days = pd.bdate_range("2024-01-01", periods=10)
+    daily = pd.DataFrame({"close": 10.0, "volume": 700.0}, index=days)
+    ratio = standard_volume_ratio(bars, daily, IntradayConfig(window_minutes=7, baseline_days=5))
+    assert ratio.iloc[5] == pytest.approx((70.0 / 7) / (700.0 / 240.0))
+    with pytest.raises(ValueError):
+        standard_volume_ratio(bars, pd.DataFrame({"close": 10.0}, index=days))
+
+
+def test_opening_window_price_is_the_close_of_the_last_bar_in_the_window():
+    bars = minutes_for_day("2024-01-02", [1.0, 2.0, 3.0, 4.0, 5.0])
+    bars["close"] = [10.0, 11.0, 12.0, 13.0, 14.0]
+    price = opening_window_price(bars, IntradayConfig(window_minutes=3))
+    assert list(price.values) == [12.0]
+    assert opening_window_price(bars, IntradayConfig(window_minutes=5)).iloc[0] == pytest.approx(14.0)
+
+
 def test_config_validation():
     with pytest.raises(ValueError):
         IntradayConfig(window_minutes=0)
@@ -65,7 +114,11 @@ def test_config_validation():
     with pytest.raises(ValueError):
         IntradayConfig(min_ratio=0)
     with pytest.raises(ValueError):
+        IntradayConfig(session_minutes=0)
+    with pytest.raises(ValueError):
         opening_window_volume(pd.DataFrame({"close": [1.0]}))
+    with pytest.raises(ValueError):
+        opening_window_price(pd.DataFrame({"volume": [1.0]}))
 
 
 # --------------------------------------------------------------------------------------
