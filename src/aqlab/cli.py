@@ -367,6 +367,52 @@ def cmd_walkforward(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_portfolio(args: argparse.Namespace) -> int:
+    from aqlab.portfolio import (
+        METHODS,
+        PortfolioConfig,
+        exposure_report,
+        format_portfolio_report,
+        simulate_portfolio,
+        write_portfolio_report,
+    )
+    from aqlab.profiles import load_profile
+    from aqlab.rules import DEFAULT_RULE_BINDINGS
+    from aqlab.tools import CsvDataSource, SyntheticDataSource
+    from aqlab.walkforward import composite_scores
+
+    if args.data_dir:
+        source = CsvDataSource(args.data_dir)
+    else:
+        source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
+
+    universe = {sym: source.bars(sym) for sym in source.symbols()}
+    bindings = load_profile(args.profile) if args.profile else list(DEFAULT_RULE_BINDINGS)
+    scores = composite_scores(universe, bindings)
+    signals = {symbol: score > 0 for symbol, score in scores.items()}
+
+    config = PortfolioConfig(
+        method=args.method,
+        lookback=args.lookback,
+        rebalance_days=args.rebalance_days,
+        max_weight=args.max_weight,
+        cash_buffer=args.cash_buffer,
+        turnover_limit=args.turnover_limit,
+        cost_bps=args.cost_bps,
+        min_history=args.min_history,
+    )
+    result = simulate_portfolio(universe, signals, config)
+    exposure = None
+    if not result["rebalances"].empty:
+        exposure = exposure_report(result["rebalances"].iloc[-1]["weights"], universe, lookback=config.lookback)
+    print(format_portfolio_report(result, exposure, config))
+
+    if args.out:
+        paths = write_portfolio_report(Path(args.out) / "portfolio", result, exposure, config)
+        print(f"\n报告已写入：{paths['markdown']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -478,6 +524,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_wf.add_argument("--no-hard-stop", action="store_true", help="disable the -2%% short-term hard stop (experiment)")
     p_wf.add_argument("--out", default=str(DEFAULT_OUT))
     p_wf.set_defaults(func=cmd_walkforward)
+
+    p_pf = sub.add_parser("portfolio", help="portfolio construction: optimize weights, apply constraints, simulate net value")
+    p_pf.add_argument("--profile", default=None)
+    p_pf.add_argument("--method", choices=["equal", "inverse_vol", "risk_parity", "min_variance", "mean_variance"], default="risk_parity")
+    p_pf.add_argument("--data-dir", default=None)
+    p_pf.add_argument("--symbols-count", type=int, default=40)
+    p_pf.add_argument("--days", type=int, default=900)
+    p_pf.add_argument("--seed", type=int, default=11)
+    p_pf.add_argument("--lookback", type=int, default=60)
+    p_pf.add_argument("--rebalance-days", type=int, default=5)
+    p_pf.add_argument("--max-weight", type=float, default=0.20)
+    p_pf.add_argument("--cash-buffer", type=float, default=0.20)
+    p_pf.add_argument("--turnover-limit", type=float, default=0.30)
+    p_pf.add_argument("--cost-bps", type=float, default=5.0)
+    p_pf.add_argument("--min-history", type=int, default=120)
+    p_pf.add_argument("--out", default=str(DEFAULT_OUT))
+    p_pf.set_defaults(func=cmd_portfolio)
     return parser
 
 

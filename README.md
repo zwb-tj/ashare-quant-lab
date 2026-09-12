@@ -22,7 +22,7 @@
 # 1) 安装（可编辑模式，附开发依赖）
 pip install -e ".[dev]"
 
-# 2) 跑测试（60 个用例，全部离线，无需网络/API key）
+# 2) 跑测试（185 个用例，全部离线，无需网络/API key）
 pytest -q
 
 # 3) 三分钟看结果：内置策略在同一份合成行情上的对比
@@ -192,25 +192,33 @@ powershell -ExecutionPolicy Bypass -File scripts\run_daily.ps1 -DryRun   # 先�
 ```
 ashare-quant-lab/
 ├── src/aqlab/
-│   ├── data.py          # 数据归一化（含中文列名）、确定性合成行情、tushare/akshare 抓取与缓存
-│   ├── indicators.py    # SMA/EMA/RSI/ATR/Donchian/z-score/波动率（全部因果）
-│   ├── strategies.py    # 内置策略 + 注册表 + 工厂
-│   ├── backtest.py      # 执行引擎（延迟、成本、仓位裁剪）、交易流水提取、组合聚合
-│   ├── metrics.py       # 收益/年化/波动/Sharpe/Sortino/回撤/Calmar/换手/胜率
-│   ├── screen.py        # 横截面因子表与加权打分排序
-│   ├── rules.py         # 打分规则插件 + 活跃市值滞回开关
-│   ├── pipeline.py      # 每日流水线：取数 → 开关 → 打分 → 排名 → 报告 → 推送
-│   ├── notify.py        # 飞书卡片 / 控制台 dry-run 通知
-│   ├── report.py        # markdown 报告 + metrics.json + equity.csv + trades.csv
-│   ├── tools.py         # 只读工具层（JSON Schema，错误以 ok=false 返回）
-│   ├── agent.py         # 有界 plan-act-observe 代理循环 + trace + 两种 LLM 客户端
-│   ├── evaluation.py    # 评测集与指标：落地率/幻觉/弃答/回归一致性
-│   └── cli.py           # demo / run / screen / fetch / eval / agent / daily
-├── scripts/             # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
-├── tests/               # 87 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、流水线、通知
-├── examples/            # 离线 demo 脚本 + 示例报告
-├── docs/                # 架构说明与路线图
-└── .github/workflows/   # CI：多 Python 版本跑 pytest
+│   ├── data.py            # 数据归一化（含中文列名）、确定性合成行情、tushare/akshare 抓取 + 换手率 + 缓存降级
+│   ├── indicators.py      # SMA/EMA/RSI/ATR/Donchian/z-score/波动率（全部因果）
+│   ├── indicators_extra.py# RSL / KDJ(9,3,3) / 振幅 / 白线 / 黄线 / BBI / 通达信 SMA / 砖型图
+│   ├── strategies.py      # 内置策略 + 注册表 + 工厂
+│   ├── backtest.py        # 执行引擎（延迟、成本、仓位裁剪）、交易流水提取、组合聚合
+│   ├── metrics.py         # 收益/年化/波动/Sharpe/Sortino/回撤/Calmar/换手/胜率
+│   ├── screen.py          # 横截面因子表与加权打分排序
+│   ├── rules.py           # 通用打分规则（回踩分档 / 单针影线 / 量价齐升）+ 活跃市值滞回开关
+│   ├── rules_zgnb.py      # 个人策略集：B1 梯度打分 / B2 / B3 / 单针下20-30 / 量价齐升V3 / 砖型绿转红 / 0AMV 开关
+│   ├── profiles.py        # 规则档案（generic|b1|b2|b3|needle_20|needle_30|volume_price_v3|zgnb_full|zgnb_brick|...）
+│   ├── position.py        # 持仓与离场：结构止损 / +3% 减半 / BBI 两日破位 / 时间止损 / 防卖飞评分 / 3-2-2
+│   ├── portfolio.py       # 组合层：5 种权重方法 + 现金缓冲/单票上限/换手上限 + 份额记账模拟 + 暴露
+│   ├── study.py           # 规则事件研究：未来 N 日收益 vs 基线（超额均值/超额胜率）
+│   ├── walkforward.py     # 滚动窗口校验：信号 → 完整交易 → 逐窗口指标（同持有期基准）
+│   ├── pipeline.py        # 每日流水线：取数 → 开关 → 打分 → 排名 → 报告 → 推送
+│   ├── notify.py          # 飞书卡片 / 控制台 dry-run 通知
+│   ├── report.py          # markdown 报告 + metrics.json + equity.csv + trades.csv
+│   ├── tools.py           # 只读工具层（JSON Schema，错误以 ok=false 返回）
+│   ├── agent.py           # 有界 plan-act-observe 代理循环 + trace + 两种 LLM 客户端
+│   ├── evaluation.py      # 评测集与指标：落地率/幻觉/弃答/回归一致性
+│   ├── tables.py          # 无依赖 markdown 表格（替代 pandas.to_markdown/tabulate）
+│   └── cli.py             # demo/run/screen/fetch/eval/agent/daily/study/plan/walkforward/portfolio
+├── scripts/               # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
+├── tests/                 # 185 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层
+├── examples/              # 离线 demo 脚本 + 示例报告
+├── docs/                  # 架构说明与路线图
+└── .github/workflows/     # CI：多 Python 版本跑 pytest
 ```
 
 ## 个人策略集：B1/B2/B3 · 单针下20/30 · 量价齐升V3 · 0AMV 活跃市值
@@ -371,13 +379,53 @@ python -m aqlab.cli walkforward --profile needle_20 --fixed-horizon --horizon 5 
 > 提醒：交易收益**未扣手续费与滑点**（真实成本会进一步压低这 0.3pp）；合成行情不等于真实市场，
 > 真实数据的换手率、涨跌停、流动性都需要另算。窗口数/交易数少时不要下结论。
 
+## 组合层：权重优化 · 暴露 · 换手约束（v0.5）
+
+选股选出的是"名单"，组合层决定"每个买多少、什么时候调、调的时候花多少钱"。
+
+```bash
+python -m aqlab.cli portfolio --profile zgnb_full --method risk_parity \
+    --max-weight 0.20 --cash-buffer 0.20 --turnover-limit 0.30 --cost-bps 5 --rebalance-days 5
+```
+
+**五种权重方法**（只用 numpy：投影梯度 + 二分投影，不引入 QP 求解器）：
+
+| 方法 | 做什么 |
+| --- | --- |
+| `equal` | 等权 |
+| `inverse_vol` | 逆波动率配权（低波动拿更多） |
+| `risk_parity` | 风险平价：乘法迭代让**风险贡献相等**（不相关资产时退化为逆波动率，有测试验证） |
+| `min_variance` | 长仓最小方差（投影梯度下降） |
+| `mean_variance` | 均值-方差效用最大化（年化 μ 与 Σ，风险厌恶系数可调） |
+
+**约束与成本口径（都不藏）**：
+
+- **现金缓冲**：总仓 ≤ 80%（留 20% 现金）；
+- **单票上限** 20%：当 `n × 上限 < 预算` 时**保留现金**，而不是偷偷放宽上限（这是我在写测试时抓出的真 bug：早期实现会为了凑满预算自动放大上限）；
+- **换手上限**：单边换手超过 30% 时向目标**插值**（`w = prev + λ(target−prev)`），而不是硬砍某一笔；
+- **权重漂移被真实模拟**：持仓按份额记账，价格变动自动产生漂移权重；再平衡费 = `Σ|Δw| × 费率 × 组合市值`。
+
+**实测输出**（合成票池 40 只 / 900 天，风险平价 + 全部约束）：
+
+```
+方法 risk_parity｜再平衡 148 次｜平均持仓 1.34 只｜平均换手 0.125｜累计成本 0.024
+净值 1.7315｜总收益 73.15%｜年化 16.62%｜年化波动 5.43%｜Sharpe 2.861｜最大回撤 -3.94%
+集中度：HHI 0.4062 / 有效持仓数 2.46｜风格：加权年化波动 9.03%、动量 2.45%、beta 0.407
+> ⚠️ 体检提示：平均持仓仅 1.3 只，分散度不足（建议 ≥5 只）：组合层无法弥补信号层过于稀疏
+```
+
+**这条警告是这层最有用的产出**：`zgnb_full` 的信号太严，148 次再平衡平均只拿 1.3 只票——组合优化再漂亮也救不了稀疏的信号。把票池从 40 扩到 80、单票上限放宽到 10% 后平均持仓升到 2.9 只，**仍然不够分散**。所以下一步该动的是**信号层的宽松度**，而不是继续调权重算法。（合成数据的绩效数字只用于验证流程，**不代表真实市场**。）
+
 ## 路线图
 
-- ✅ **v0.2（已完成）LLM / Agent 研究层**：只读工具层（6 个工具，JSON Schema）+ 有界代理循环 + 全步骤 trace + 评测集（含"看起来合理但其实错"的陷阱任务）与落地率/幻觉率/弃答率指标。
-- ✅ **v0.3（已完成）每日流水线**：规则插件化（回踩分档 / 单针下均线 / 量价齐升）+ 活跃市值滞回开关 + tushare 取数与本地缓存（断网降级）+ 飞书卡片推送 + Windows 17:30 计划任务 + 全链路离线测试。
-- **v0.4** 组合层：权重优化、行业/风格暴露、换手约束。
-- **v0.5** 数据质量：缺口/停牌/复权一致性检查，多源交叉校验。
-- **v0.6** 可视化报告：净值/回撤/因子贡献图。
+- ✅ **v0.2** LLM / Agent 研究层：只读工具层 + 有界代理循环 + 全步骤 trace + 可靠性评测（落地率/幻觉/弃答）。
+- ✅ **v0.3** 每日流水线：规则插件化 + 活跃市值滞回开关 + tushare 取数与缓存降级 + 飞书推送 + Windows 17:30 计划任务。
+- ✅ **v0.4.x** 个人策略集：B1 梯度打分（5 硬 4 软）、单针下20/30（RSL 口径）、量价齐升V3、0AMV 波段开关、砖型图（含绿转红 XG 与红砖门）、持仓/离场管理、规则事件研究、滚动窗口校验、真实换手率接入。
+- ✅ **v0.5** 组合层：五种权重方法 + 现金缓冲/单票上限/换手上限 + 份额记账与再平衡成本 + 暴露体检。
+- **v0.6** 信号层迭代：按 v0.4.2/v0.5 的证据调整规则宽松度（B2/B3 前置、单票上限与票池规模），再跑事件研究与 walk-forward 复核。
+- **v0.7** 数据质量：缺口/停牌/复权一致性检查，多源交叉校验。
+- **v0.8** 可视化报告：净值/回撤/因子贡献图。
+
 
 详见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
