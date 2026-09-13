@@ -11,8 +11,8 @@ pytest, github-actions, llm-agent-evaluation, grounded-number-rate -->
 transaction-cost modelling, lookahead-free execution, cross-sectional factor scoring, an auditable
 research agent behind read-only tools, and a testable CLI. The exhibit is the research loop -
 hypothesis, experiment, measured result, decision - with negative results kept: seven hypotheses
-tested here were rejected by the project's own data, including the default factor weighting and the
-inference that a negative information coefficient can simply be traded the other way round.
+were rejected by the project's own data, including the default factor weighting and the inference that
+a negative information coefficient can be traded in reverse.
 
 ## Research questions
 
@@ -34,9 +34,10 @@ by month, 809 with long-history minute data. The factor study uses the same 5,42
 to 2026-09, giving 82 cross-sections at a 20-day horizon (85 at 1 to 5 days, 84 at 10) in a 9-minute
 pass. The published-list study deduplicates 508 archived records to 334 records over 282 symbols
 (2026-06-17 to 2026-09-11, 55 trading days).
+
 **Conventions.** Signal at the close of day T, entry at the open of T+1, exits judged bar by bar,
 regime state from the previous close only, every horizon paired against a benchmark over the same
-holding period. Factor values use only bars up to and including the `as_of` date.
+holding period; factor values use only bars up to and including the `as_of` date.
 
 **Benchmarks.** Equal-weighted full-market index (universe study); an equal-weighted basket of 148
 non-selected symbols entered the same day at the same open (published-list study), with excess on
@@ -65,8 +66,8 @@ overlapping forward windows are corrected by `t_adj = t / sqrt(overlap)`.
 
 **1. Regime gating is the one stable effect - holds.** Regime-open trades averaged +0.69% versus
 -0.35% closed over 58,682 trades; in 2026-06 to 09 the gap was +0.78% excess (t = 3.44) versus -0.81%
-(t = -6.08), and the long re-check kept the direction (+0.58% versus -0.31%). Both sides stay below
-the equal-weighted benchmark (-0.21%, t = -7.54; -0.04%, t = -1.18).
+(t = -6.08), and the long re-check kept the direction (+0.58% versus -0.31%). Both stay below the
+benchmark (-0.21%, t = -7.54; -0.04%, t = -1.18).
 
 **2. Structural exits destroy return - holds, as a rejection.** Holding fell from 10-20 days to 3-5
 and excess moved from near zero to -0.13/-0.17 (t = -4.6 to -6.3); in the volume-slope subset the
@@ -74,22 +75,26 @@ rules gave +0.21% against holds of +0.39% / +0.62% / +1.42% at 5 / 10 / 20 days.
 
 **3. The screening rule loses to the benchmark - holds, as a rejection.** Over 334 published records
 excess was negative at every horizon (t = -2.25 to -5.58); 13 of 24 bucket-by-horizon cells were
-significantly negative, none significantly positive. `v3` (+0.06%, t = 0.06) and `n20` (+0.12%,
-t = 0.39) were flat at one day, and both turn negative once a 0.15% round trip is charged.
+significantly negative, none significantly positive, and the two buckets flat at one day turn negative
+once a 0.15% round trip is charged.
 
 | Bucket | Records | 1-day return / bench / excess | 3-day | 5-day | 10-day |
 | --- | ---: | --- | --- | --- | --- |
 | `b1` | 146 | -0.05 / +0.25 / -0.30 | -0.33 / +0.80 / -1.13 | -1.11 / +0.69 / -1.81 | -2.11 / +1.44 / -3.55 |
+| `n20` | 62 | +0.36 / +0.23 / +0.12 | -1.19 / +0.41 / -1.59 | -1.30 / +1.04 / -2.34 | -1.88 / +1.78 / -3.66 |
+| `v3` | 26 | +0.16 / +0.11 / +0.06 | -1.20 / +0.27 / -1.47 | -3.53 / +0.78 / -4.31 | -9.02 / +0.66 / -9.68 |
 | all | 334 | -0.23 / +0.17 / -0.40 | -0.67 / +0.50 / -1.18 | -1.59 / +0.57 / -2.15 | -3.06 / +1.17 / -4.23 |
 
 | Excess t | 1-day | 3-day | 5-day | 10-day |
 | --- | ---: | ---: | ---: | ---: |
 | `b1` | -1.27 | -2.77 | -2.75 | -3.41 |
+| `n20` | +0.39 | -2.43 | -2.25 | -2.22 |
+| `v3` | +0.06 | -0.90 | -1.72 | -3.08 |
 | all | -2.25 | -3.78 | -4.45 | -5.58 |
 
 **4. Opening-window features have no reproducible edge - rejected.** Volume-slope quartiles looked
-monotone in the short window; over 21 months the advantage shrank to +0.16pp, and a high volume ratio
-reversed sign from -0.53% to +0.21%.
+monotone in the short window; over 21 months the advantage shrank to +0.16pp and a high volume ratio
+reversed sign (-0.53% to +0.21%).
 
 | Group | 3.5-month window (2,597 trades) | 21-month re-check (13,492 trades) |
 | --- | --- | --- |
@@ -97,7 +102,7 @@ reversed sign from -0.53% to +0.21%.
 | volume slope > 0 | -0.35% mean, +0.05% excess (t = 0.22) | +0.21% mean, +0.08% excess (t = 1.00) |
 | volume ratio >= 4 | -1.10% mean, -0.53% excess (t = -1.57) | +0.37% mean, +0.21% excess (t = 1.38) |
 
-Quartile cut inside the short window (excess %, Q1 lowest, Q4 highest):
+Quartile cut, short window (excess %):
 
 | Feature | Q1 | Q4 |
 | --- | ---: | ---: |
@@ -166,7 +171,7 @@ negative at all six horizons and grows with horizon.
 | 10 days | -0.075 | -0.080 | -0.059 | -0.090 | -0.077 |
 | 20 days | -0.082 | -0.084 | -0.068 | -0.105 | -0.076 |
 
-At a 5-day holding period the four schemes still all lose to the benchmark, and the ranking changes.
+At a 5-day holding period the four schemes still all lose to the benchmark, with a changed ranking.
 
 | Scheme | Mean net % | Win rate % | Mean excess % | Excess t |
 | --- | ---: | ---: | ---: | ---: |
@@ -176,14 +181,14 @@ At a 5-day holding period the four schemes still all lose to the benchmark, and 
 | `sign_flip` | -0.58 | 47.1 | -0.88 | -1.30 |
 
 Across both holding periods no scheme produces positive net alpha, and the ranking moves with the
-horizon (`fixed` best at 20 days, `ic_weight` at 5): noise rather than edge. Reversal
+horizon (`fixed` best at 20 days, `ic_weight` at 5): noise, not edge. Reversal
 performing worse holds only at 20 days (at 5 days `sign_flip` converges with the others at -0.88%),
 so it is horizon-dependent, not general.
 
 **9. The agent layer is scored against four failure modes, not trusted.** The harness grew from 5
 tasks to 20: `normal` (9: backtest, indicator, data, screening, metadata), `trap` (5: missing symbol,
 invalid parameter, insufficient history, future data, an invitation to answer from memory),
-`consistency` (3: a premise contradicting tool output, where correction is correct) and `regression`
+`consistency` (3: a premise contradicting tool output, corrected rather than echoed) and `regression`
 (3: repeated answers must match word for word).
 
 | Metric | Value |
@@ -209,9 +214,9 @@ three metrics.
 ## What was rejected and why
 
 - **"High volume ratio plus an opening push signals fresh money."** The relative-caliber gate selected
-  26 of 146 signals well below the 120 excluded (group difference t = -3.26), the software-caliber cut
-  left 9 trades even lower, and every threshold and caliber combination tested was negative. The
-  shipped `min_ratio = 1.0` is a negative contribution here.
+  26 of 146 signals at -11.19% 10-day excess against -2.17% for the 120 excluded (-9.02pp, t = -3.26);
+  the software-caliber cut left 9 trades at -12.51%, and every threshold and caliber combination
+  tested was negative. The shipped `min_ratio = 1.0` is a negative contribution here.
 - **"Higher volume ratio means accumulation."** A -0.53% short-window figure became +0.21%
   (t = 1.38) over 21 months: one weak window, not a regularity.
 - **"Structural exits protect profit."** Moving-average breaks alone were 33,440 trades (57%) averaging
@@ -255,11 +260,11 @@ The volume-ratio gate, in numbers (10-day excess %, 146 published signals):
 ## Engineering
 
 312 pytest cases in 32 test modules run offline with no network or API key; statement coverage is 86%
-(5,382 statements, 728 missed) and CI fails below 85% via `--cov-fail-under=85`. GitHub Actions runs
+(5,382 statements, 728 missed); CI fails below 85% (`--cov-fail-under=85`). GitHub Actions runs
 `ruff`, `mypy` and the suite on a Python 3.10 / 3.11 / 3.12 matrix plus CLI smoke tests, with the lint
 rule set pinned in `pyproject.toml` rather than set to `ALL`. A repository-hygiene guard test blocks
 UTF-8 BOMs in text files, re-parses `pyproject.toml` for the project name, the `dev` extra and the
-pinned tool sections, and rejects tab indentation in CI YAML. Lookahead is prevented structurally
+pinned tool sections, and rejects tab-indented CI YAML. Lookahead is prevented structurally
 (`positions.shift(1)`) and disproved constructively: a test asserts that a signal peeking at the same
 day's move loses money. Costs are explicit (`BacktestConfig(fee_bps=3, slippage_bps=2)`) with per-bar
 cost and turnover persisted; quality auditing covers gaps, zero-volume bars, jumps, cross-source diffs
@@ -274,7 +279,7 @@ cross-sections) and 2026-06-17 to 2026-09-11 (published list, 55 trading days). 
 the currently listed symbol set and carries survivorship bias; factor results are equal-weighted with
 no industry or size neutralisation, and the IC study deducts no costs, though the scheme backtest
 charges 20 bps per rebalance. Opening features are not full-market (2,597 trades short window; an
-809-symbol stratified sample in the long re-check). Benchmarks are equal-weighted and small-cap
+809-symbol stratified sample long). Benchmarks are equal-weighted and small-cap
 tilted, not cap-weighted. The universe and published-list studies deduct no costs (0.15% to 0.2% round
 trip); market impact and liquidity beyond fixed slippage are not measured; limit-up, limit-down and
 suspensions are unmodelled; prices are forward-adjusted. Excess t-statistics in the rule studies mostly

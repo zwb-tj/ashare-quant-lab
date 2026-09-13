@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml)
 ![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
-![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-86%25-brightgreen)
 ![lint](https://img.shields.io/badge/lint-ruff%20clean-brightgreen)
 ![types](https://img.shields.io/badge/mypy-clean-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -15,7 +15,7 @@
 
 | 维度 | 具体数字 / 事实 |
 | --- | --- |
-| **测试与质量** | **312 个测试**（29 个测试模块，全部离线、无需网络与 API key）｜**覆盖率 89%**，CI 门禁 `--cov-fail-under=85`｜**ruff 与 mypy 全绿并接入 CI**（lint 规则集在 `pyproject.toml` 里钉死，不用"ALL"再逐个抑制）｜CI 在 Python **3.10 / 3.11 / 3.12** 三版本矩阵上跑 lint + 类型检查 + 测试 + CLI 冒烟 |
+| **测试与质量** | **312 个测试**（32 个测试模块，全部离线、无需网络与 API key）｜**覆盖率 86%**，CI 门禁 `--cov-fail-under=85`｜**ruff 与 mypy 全绿并接入 CI**（lint 规则集在 `pyproject.toml` 里钉死，不用"ALL"再逐个抑制）｜CI 在 Python **3.10 / 3.11 / 3.12** 三版本矩阵上跑 lint + 类型检查 + 测试 + CLI 冒烟 |
 | **真实数据规模** | 本地行情库（LevelDB）**5,424 只标的**，日线覆盖 2000 年起、分钟线 2025-01 起（每日 241 根）｜单次全市场研究 **58,682 笔**交易、2025-01 ~ 2026-09（21 个月） |
 | **统计严谨性** | 所有结论都给**样本数 + 均值 + 同期基准超额 + Welch t 值**；基准用**全市场等权指数**（同入场日、同持有期）｜**24 个口径组合的稳健性检查**（窗口 7/8 根 × 全天 240/241 分钟 × 方向口径 × 阈值 3/4/5） |
 | **可证伪的研究结论** | 有 **5 条假设被自己的数据否决**并写进文档：选股规则 334 条记录超额 -0.40 ~ -4.23%（t=-2.25 ~ -5.58，24 格中 13 格显著为负）；"高量比+开盘上冲"在 21 个月长样本上反转（-0.53% → +0.21%）；结构离场把持有期从 10~20 天压到 3~5 天、超额从 ≈0 变成 -0.13 ~ -0.17；白线破位单条规则占 57% 的交易且平均 -1.55% |
@@ -819,7 +819,7 @@ python scripts/opening_filter_study.py                       # 决策日开盘 0
 - ✅ **v0.16** Agent 评测集扩到 **20 个任务 / 4 类失败模式**（正常、应弃答陷阱、矛盾前提、可重复性），新增 `contradiction_accuracy`（纠正错误前提）与 `constraint_violations`（越界说法计数）两项指标。
 - ✅ **v0.15** 月度收益热力图 + 离线自包含 HTML 报告（`aqlab plot` 一次产出；报告内嵌图片、零外部引用、无 JS）。
 - ✅ **v0.14** 静态检查接入 CI：`ruff`（钉死规则集、零违规）与 `mypy`（32 个源文件零错误）成为合并门禁；顺带修掉 `params` 隐式联合类型、数据源变量重赋值、两处多余的 `type: ignore`。
-- ✅ **v0.13** 面向展示的工程面：CLI 端到端测试把覆盖率从 74% 提到 89%、CI 覆盖率门禁 ≥85%、English README、案例研究（含被否决的假设）。
+- ✅ **v0.13** 面向展示的工程面：CLI 端到端测试把覆盖率从 74% 提到 89%（后续加入因子研究模块后为 86%）、CI 覆盖率门禁 ≥85%、English README、案例研究（含被否决的假设）。
 - ✅ **v0.9** 可视化与报告：净值/回撤/策略指标对比/**月度收益热力图** + **离线自包含 HTML 报告**（`aqlab plot`；matplotlib 为可选依赖，README 中的图由该命令生成）。
 
 
