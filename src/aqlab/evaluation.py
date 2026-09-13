@@ -1,4 +1,4 @@
-﻿"""Evaluation harness for the LLM research layer.
+"""Evaluation harness for the LLM research layer.
 
 The point of this module is to make agent reliability **measurable** instead of
 vibes-based. It scores four things for every task:

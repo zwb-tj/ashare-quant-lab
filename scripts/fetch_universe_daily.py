@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """全市场日线抓取（后台长任务，可中断续跑）。
 
 - 代码表来自 data/universe/symbols.txt

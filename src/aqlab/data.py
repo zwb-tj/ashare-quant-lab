@@ -1,4 +1,4 @@
-﻿"""Data layer: normalization, deterministic synthetic data, optional live fetchers.
+"""Data layer: normalization, deterministic synthetic data, optional live fetchers.
 
 Design goals
 ------------
