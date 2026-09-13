@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **322 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **326 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -20,6 +20,11 @@
   and is negative everywhere, so the finding is not a long-horizon artefact; re-running the weighting schemes
   at a 5-day holding period keeps the conclusion (all four schemes underperform the benchmark, excess -0.74%
   to -0.88%), while the ranking between schemes moves with the horizon - a sign of noise, not of edge.
+- **Parameter sensitivity**: a 2x2x3 grid (lookback 60/120, single-name cap 10%/20%, equal / min-variance /
+  mean-variance) over the real market shows mean-variance last in every cell (-18% to -31%, Sharpe negative,
+  6.6-11.4 names, 20.6-23.8% volatility) while tightening the cap only mitigates (-31% -> -23%) and a longer
+  window only mitigates further (-25%); equal weights are insensitive to both. The optimiser was also sped up
+  10-72x (identical results) by cutting the internal bisection to 60 iterations and adding a convergence test.
 - **The portfolio layer now runs on real data**: `aqlab portfolio --compare-methods` compares five weighting
   methods on the same signals and constraints over 1.7 years and 5,424 symbols. Mean-variance is a textbook
   failure here (6.6 names on average, -43% drawdown, -15.6% CAGR) because a 60-day expected-return estimate is
@@ -722,6 +727,7 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.24** Portfolio parameter sensitivity (a 12-run grid) plus a 10-72x optimiser speed-up with identical output.
 - ✅ **v0.23** Portfolio layer on real data: five weighting methods compared, degenerate cases called out, and
   unit fixes for turnover/cost display.
 - ✅ **v0.22** Reproducibility check wired into CI (graded verification, exit-code policy unit-tested).

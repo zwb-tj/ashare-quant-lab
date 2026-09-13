@@ -412,15 +412,23 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
     print(format_portfolio_report(result, exposure, config))
 
     comparison = None
+    sensitivity = None
     if args.compare_methods:
         comparison = _compare_weight_methods(universe, signals, config, args)
         print()
         print(comparison["markdown"])
 
+    if args.sensitivity:
+        sensitivity = _portfolio_sensitivity(universe, signals, config, args)
+        print()
+        print(sensitivity["markdown"])
+
     if args.out:
         paths = write_portfolio_report(Path(args.out) / "portfolio", result, exposure, config)
         if comparison is not None and comparison.get("table") is not None:
             comparison["table"].to_csv(Path(args.out) / "portfolio" / "method_comparison.csv", index=False, encoding="utf-8-sig")
+        if sensitivity is not None and sensitivity.get("table") is not None:
+            sensitivity["table"].to_csv(Path(args.out) / "portfolio" / "sensitivity.csv", index=False, encoding="utf-8-sig")
         print(f"\n报告已写入：{paths['markdown']}")
     return 0
 
@@ -1243,6 +1251,66 @@ def _compare_weight_methods(universe, signals, config, args) -> dict:
     })) + note}
 
 
+def _portfolio_sensitivity(universe, signals, config, args) -> dict:
+    """在 lookback × max_weight 的小网格上，检验权重方法的结论是否稳健。"""
+    import dataclasses
+
+    import pandas as pd
+
+    from aqlab.portfolio import simulate_portfolio
+    from aqlab.tables import markdown_table
+
+    lookbacks = [int(item) for item in str(args.sensitivity_lookbacks).split(",") if item.strip()]
+    caps = [float(item) for item in str(args.sensitivity_caps).split(",") if item.strip()]
+    methods = ("equal", "min_variance", "mean_variance")
+    rows: list[dict] = []
+    for lookback in lookbacks:
+        for cap in caps:
+            for method in methods:
+                method_config = dataclasses.replace(config, method=method, lookback=lookback, max_weight=cap)
+                outcome = simulate_portfolio(universe, signals, method_config)
+                metrics = outcome.get("metrics") or {}
+                summary = outcome.get("summary") or {}
+                rows.append(
+                    {
+                        "lookback": lookback,
+                        "max_weight": cap,
+                        "method": method,
+                        "total_return": metrics.get("total_return"),
+                        "sharpe": metrics.get("sharpe"),
+                        "max_drawdown": metrics.get("max_drawdown"),
+                        "ann_vol": metrics.get("ann_vol"),
+                        "avg_positions": summary.get("avg_positions"),
+                    }
+                )
+    table = pd.DataFrame(rows)
+    view = table.copy()
+    for column in ("total_return", "max_drawdown", "ann_vol"):
+        view[column] = (view[column].astype(float) * 100).round(2)
+    view["sharpe"] = view["sharpe"].astype(float).round(3)
+    view["avg_positions"] = view["avg_positions"].astype(float).round(1)
+
+    # 机制检验：拉长 lookback 与收紧 cap 是否改善均值方差？
+    note = ""
+    mean_var = table[table["method"] == "mean_variance"]
+    if not mean_var.empty and len(mean_var) > 1:
+        best = mean_var.sort_values("total_return", ascending=False).iloc[0]
+        base_candidates = mean_var[(mean_var["lookback"] == lookbacks[0]) & (mean_var["max_weight"] == caps[-1])]
+        if not base_candidates.empty:
+            base = base_candidates.iloc[0]
+            note = (
+                "\n> 机制检验（均值方差）：基准配置（lookback="
+                f"{lookbacks[0]}、cap={caps[-1]:.0%}）总收益 {float(base['total_return']) * 100:.2f}%；"
+                f"网格内最好的一格是 lookback={int(best['lookback'])}、cap={float(best['max_weight']):.0%}"
+                f"（{float(best['total_return']) * 100:.2f}%）。"
+                "\n"
+            )
+    return {"table": table, "markdown": "## 参数敏感性（lookback × 单票上限）\n\n" + markdown_table(view.rename(columns={
+        "lookback": "回看窗口", "max_weight": "单票上限", "method": "方法", "total_return": "总收益%",
+        "sharpe": "Sharpe", "max_drawdown": "最大回撤%", "ann_vol": "年化波动%", "avg_positions": "平均持仓",
+    })) + note}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1370,6 +1438,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_pf.add_argument("--cost-bps", type=float, default=5.0)
     p_pf.add_argument("--min-history", type=int, default=120)
     p_pf.add_argument("--compare-methods", action="store_true", help="also compare all five weighting methods under the same signals and constraints")
+    p_pf.add_argument("--sensitivity", action="store_true", help="run a small lookback x max-weight grid to test whether the method ranking is robust")
+    p_pf.add_argument("--sensitivity-lookbacks", default="60,120", help="comma list of lookback windows for --sensitivity")
+    p_pf.add_argument("--sensitivity-caps", default="0.1,0.2", help="comma list of single-name caps for --sensitivity")
     p_pf.add_argument("--out", default=str(DEFAULT_OUT))
     p_pf.set_defaults(func=cmd_portfolio)
 
