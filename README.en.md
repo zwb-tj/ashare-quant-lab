@@ -30,8 +30,10 @@
   negative and quantile returns decrease monotonically, i.e. the sample behaves as a reversal market, the
   opposite of the shipped momentum weights.
 - **Reproducibility is checkable**: `scripts/reproduce_all.py --verify` regenerates every figure into a temporary
-  directory and compares it byte-for-byte with the committed copies (all four synthetic charts match), and a test
-  fails if any image embedded in this README has no reproduction step behind it.
+  directory and compares it byte-for-byte with the committed copies - all eight charts match (four synthetic ones in
+  about 35 seconds, four real-market ones in about 23.5 minutes). Matplotlib output here is deterministic, so
+  "the figures match the code" is proved by hash rather than by eye. A test also fails if any image embedded in
+  this README has no reproduction step behind it.
 - **Visualisation and reporting**: one `aqlab plot` call emits equity, drawdown, strategy-comparison and monthly-return charts plus an **offline self-contained HTML report** (base64 images, zero external references, no JavaScript); matplotlib is an optional extra with a clear degradation message.
 - **The agent layer is evaluated on 20 tasks covering four failure modes** (normal, abstain traps such as
   unknown symbol / invalid parameters / insufficient history / future data / memory bait, contradiction
