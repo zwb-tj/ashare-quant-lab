@@ -1054,6 +1054,94 @@ def cmd_factor_ic(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_factor_backtest(args: argparse.Namespace) -> int:
+    """把因子研究结论落成策略：固定权重 vs 反转 vs 按滚动 IC 动态定权（含成本与基准）。"""
+    import pandas as pd
+
+    from aqlab.factor_strategy import SCHEMES, SchemeConfig, run_weight_schemes, summarize_schemes
+    from aqlab.report_html import write_html_report
+    from aqlab.tables import markdown_table
+
+    if args.data_dir:
+        from aqlab.tools import CsvDataSource
+
+        source: Any = CsvDataSource(args.data_dir)
+    else:
+        from aqlab.tools import SyntheticDataSource
+
+        source = SyntheticDataSource(n_symbols=args.symbols, n_days=args.days, seed=args.seed)
+    frames: dict[str, pd.DataFrame] = {}
+    for symbol in source.symbols():
+        try:
+            frame = source.bars(symbol)
+        except Exception:
+            continue
+        if frame is not None and not frame.empty:
+            frames[symbol] = frame
+
+    schemes = tuple(item.strip() for item in args.schemes.split(",") if item.strip()) if args.schemes else SCHEMES
+    config = SchemeConfig(
+        top_n=args.top_n,
+        forward_days=args.forward,
+        step_days=args.step,
+        min_history=args.min_history,
+        min_symbols=args.min_symbols,
+        lookback_periods=args.lookback,
+        lag_periods=args.lag,
+        round_trip_cost_bps=args.cost_bps,
+    )
+    detail, curves = run_weight_schemes(frames, config, schemes=schemes)
+    if detail.empty:
+        print("没有可用的调仓期（检查 --min-history / --min-symbols / --lookback）")
+        return 1
+    summary = summarize_schemes(detail)
+
+    print(
+        f"标的 {len(frames)} 只｜调仓 {detail['date'].nunique()} 期｜持有 {config.forward_days} 日｜"
+        f"步长 {config.step_days} 日｜成本 {config.round_trip_cost_bps:g} bps｜权重滞后 {config.lag_periods} 期"
+    )
+    print()
+    view = summary.copy()
+    for column in ("mean_net", "win_rate", "mean_excess"):
+        view[column] = (view[column].astype(float) * 100).round(2)
+    view["excess_t"] = view["excess_t"].astype(float).round(2)
+    print(markdown_table(view.rename(columns={
+        "scheme": "方案", "periods": "期数", "mean_net": "平均净收益%", "win_rate": "胜率%",
+        "mean_excess": "平均超额%", "excess_t": "超额t值",
+    })))
+
+    if args.out:
+        out = Path(args.out) / "factor_schemes"
+        out.mkdir(parents=True, exist_ok=True)
+        detail.to_csv(out / "schemes_detail.csv", index=False, encoding="utf-8-sig")
+        summary.to_csv(out / "schemes_summary.csv", index=False, encoding="utf-8-sig")
+        images = []
+        try:
+            from aqlab.charts import plot_scheme_curves
+
+            images = [plot_scheme_curves(curves, out / "scheme_curves.png")]
+        except RuntimeError as error:                     # matplotlib 未安装
+            print(f"（跳过绘图：{error}）")
+        write_html_report(
+            out / "report.html",
+            title="Factor weighting schemes",
+            summary=summary.round(4),
+            images=images,
+            meta={
+                "symbols": len(frames),
+                "rebalances": int(detail["date"].nunique()),
+                "top_n": config.top_n,
+                "forward_days": config.forward_days,
+                "round_trip_cost_bps": config.round_trip_cost_bps,
+                "weight_lag_periods": config.lag_periods,
+                "source": args.data_dir or f"synthetic(seed={args.seed})",
+            },
+            notes="Weights come from trailing IC only (strictly earlier cross-sections); benchmark is the equal-weight universe.",
+        )
+        print(f"\n结果已写入：{out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1318,6 +1406,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_fic.add_argument("--quantiles", type=int, default=5)
     p_fic.add_argument("--out", default=str(DEFAULT_OUT))
     p_fic.set_defaults(func=cmd_factor_ic)
+    p_fb = sub.add_parser("factor-backtest", help="weighting schemes from trailing IC, net of costs, vs benchmark")
+    p_fb.add_argument("--data-dir", default=None)
+    p_fb.add_argument("--symbols", type=int, default=40)
+    p_fb.add_argument("--days", type=int, default=500)
+    p_fb.add_argument("--seed", type=int, default=11)
+    p_fb.add_argument("--schemes", default=None, help="comma list, default all four")
+    p_fb.add_argument("--top-n", type=int, default=10)
+    p_fb.add_argument("--forward", type=int, default=20)
+    p_fb.add_argument("--step", type=int, default=5)
+    p_fb.add_argument("--lookback", type=int, default=12, help="trailing cross-sections used for the IC weights")
+    p_fb.add_argument("--lag", type=int, default=1, help="cross-sections of lag; 1 means strictly past IC only")
+    p_fb.add_argument("--cost-bps", type=float, default=20.0, help="round-trip cost per rebalance")
+    p_fb.add_argument("--min-history", type=int, default=130)
+    p_fb.add_argument("--min-symbols", type=int, default=30)
+    p_fb.add_argument("--out", default=str(DEFAULT_OUT))
+    p_fb.set_defaults(func=cmd_factor_backtest)
     return parser
 
 

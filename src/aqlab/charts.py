@@ -24,6 +24,7 @@ __all__ = [
     "plot_factor_ic",
     "plot_monthly_heatmap",
     "plot_quantile_returns",
+    "plot_scheme_curves",
     "plot_strategy_comparison",
 ]
 
@@ -219,6 +220,33 @@ def plot_quantile_returns(table: pd.DataFrame, path: str | Path, title: str = "F
     axis.set_title(title, fontsize=10)
     axis.grid(alpha=0.25)
     axis.legend(fontsize=7, frameon=False, ncol=2)
+    figure.tight_layout()
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, bbox_inches="tight")
+    plt.close(figure)
+    return target
+
+
+def plot_scheme_curves(
+    curves: Mapping[str, pd.Series],
+    path: str | Path,
+    title: str = "Top-N portfolios by weighting scheme (net of costs)",
+) -> Path:
+    """多方案的累计净值曲线（含等权全市场基准）。"""
+    plt = _pyplot()
+    if not curves:
+        raise ValueError("no curve to plot")
+    figure, axis = plt.subplots(figsize=(9.2, 4.0), dpi=140)
+    for label, series in curves.items():
+        values = pd.Series(series).astype(float).sort_index()
+        style = {"linestyle": "--", "color": "#666666", "linewidth": 1.4} if label == "benchmark" else {"linewidth": 1.6}
+        axis.plot(values.index, values.to_numpy(), label=str(label), **style)
+    axis.axhline(1.0, color="#bbbbbb", linewidth=0.8)
+    axis.set_ylabel("cumulative net value")
+    axis.set_title(title, fontsize=10)
+    axis.grid(alpha=0.25)
+    axis.legend(fontsize=8, frameon=False, ncol=2)
     figure.tight_layout()
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
