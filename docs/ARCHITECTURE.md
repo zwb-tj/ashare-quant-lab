@@ -23,6 +23,12 @@ indicators.py ──┘             │               │
 
 ## 各模块职责
 
+分成三层看：**交易层**（data → indicators → strategies → backtest → metrics）负责"能不能跑、跑得对不对"；
+**研究层**（screen / rules_* / study* / walkforward / sweep / intraday / confirm_eval / picks / exits /
+factor_ic / factor_strategy）负责"结论站不站得住"；**展示层**（report / charts / report_html / cli / agent）
+负责"别人能不能复核"。研究层的每个模块都必须给出样本数、基准与显著性，否则不予采纳。
+
+
 | 模块 | 职责 | 明确不负责 |
 | --- | --- | --- |
 | `data.py` | 统一 OHLCV 模式（含中文列名映射）、确定性合成行情、可选实盘数据抓取 | 不做因子、不做交易决策 |
@@ -32,6 +38,22 @@ indicators.py ──┘             │               │
 | `metrics.py` | 由回测帧计算标准指标 | 不读数据、不写文件 |
 | `screen.py` | 横截面因子快照 + 加权 z-score 排序 | 不做回测、不做择时 |
 | `report.py` | 把一次回测固化为可复核产物 | 不计算指标 |
+| `rules.py` / `rules_zgnb.py` | 规则插件（含自定义规则集）：返回 [0,1] 分数序列，参数可覆盖 | 不做执行、不知道成本 |
+| `profiles.py` | 命名档案：一次切换整套规则与门槛 | 不含规则逻辑 |
+| `position.py` | 持仓与离场计划：止损/分批/防守评分的事件流 | 不做择时信号 |
+| `intraday.py` | 开盘窗口量比（相对口径与**软件口径**）、开盘特征、次决策映射 | 不做日内执行细节 |
+| `confirm_eval.py` | 量比闸门评估：决策日入场、基准配对 | 不选股 |
+| `study.py` / `walkforward.py` / `sweep.py` | 规则事件研究、滚动窗口校验、参数扫描 | 不做组合优化 |
+| `portfolio.py` | 组合权重（五种方法）、暴露与换手约束、份额记账 | 不产生信号 |
+| `quality.py` | 数据质量审计：缺口/零成交/跳变/多源交叉/快照指纹 | 不修数据 |
+| `picks.py` | 已发布名单回测：T+1 开盘入场、去重、同期等权篮子超额 | 不重新选股 |
+| `exits.py` | 离场规则引擎：白黄线、牵牛绳、滴滴、止损止盈、ATR | 不决定买什么 |
+| `study_universe.py` | 全市场研究：选股 + 大盘阶段（0AMV）+ 离场规则同一流水线 | 不做参数搜索 |
+| `factor_ic.py` | 因子有效性：逐截面 IC/IC_IR、重叠修正 t 值、分位收益、多持有期期限结构 | 不做策略 |
+| `factor_strategy.py` | 定权方案回测：滚动 IC 定权、显式成本、等权基准 | 不做风险模型 |
+| `charts.py` / `report_html.py` | 净值/回撤/热力图/因子图与**离线自包含** HTML 报告 | 不做统计判定 |
+| `stockdb.py` | 本地行情库接入（SDK 优先、HTTP 降级） | 不缓存业务结论 |
+| `tables.py` | 零依赖 markdown 表格渲染 | 不做数值计算 |
 | `cli.py` | 参数解析与流程编排 | 不含业务逻辑 |
 
 ## 执行时序（关键设计）

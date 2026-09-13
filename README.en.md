@@ -708,6 +708,7 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.20** Documentation close-out: the case study now covers the whole loop (screening rules, factor IC, portfolio check, horizon robustness, agent evaluation) and the architecture doc lists every module.
 - ✅ **v0.19** Horizon robustness: one-pass multi-horizon IC term structure plus a short-horizon scheme re-run.
 - ✅ **v0.18** Weighting-scheme backtest closing the research loop: fixed vs sign-flipped vs trailing-IC weights,
   past-IC-only weights, explicit turnover cost and an equal-weight benchmark; all schemes lose to the benchmark.

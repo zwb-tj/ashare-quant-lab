@@ -23,7 +23,7 @@
 | **LLM / Agent 层** | 只读工具层 + 有界代理循环 + 全步骤 trace + 可靠性评测（工具落地率 / 幻觉率 / 弃答率），并有"代理说的每个数字必须来自工具"的约束 |
 | **可视化与报告** | `aqlab plot` 一条命令产出净值 / 回撤 / 策略对比 / 月度收益热力图，外加**离线自包含 HTML 报告**（base64 内嵌图片、零外部引用、无 JS）；matplotlib 为可选依赖，未安装时降级为明确提示 |
 | **因子研究（含闭环检验）** | `aqlab factor-ic` 逐截面 Spearman IC / IC_IR / 分位收益（重叠窗口修正 t 值）；`aqlab factor-backtest` 再把结论落成策略做样本外检验——真实全市场（5,424 只、82 次调仓）上**四种定权方案全部跑输等权基准**，且「按负 IC 反手做多」显著更差（超额 -3.55%，t=-4.28）：**因子层面的统计量不能直接当组合 alpha** |
-| **文档** | 中文 README + [English README](README.en.md) + [案例研究（研究闭环与负面结果）](docs/CASE_STUDY.md) + [架构说明](docs/ARCHITECTURE.md) + [路线图](docs/ROADMAP.md) |
+| **文档** | 中文 README + [English README](README.en.md) + [案例研究（完整研究闭环：量化检验 → 因子研究 → 组合检验 → Agent 评测）](docs/CASE_STUDY.md) + [架构说明](docs/ARCHITECTURE.md) + [路线图](docs/ROADMAP.md) |
 
 **技术栈**：Python 3.10+ ｜ numpy / pandas（核心零第三方策略依赖）｜ pytest + pytest-cov ｜ GitHub Actions ｜ 本地 LevelDB 行情库（C++ 引擎 + Python SDK）｜ 可选：tushare / akshare / matplotlib
 
@@ -812,6 +812,7 @@ python scripts/opening_filter_study.py                       # 决策日开盘 0
 - ✅ **v0.10** 选股日志回测：次日开盘入场 + 去重窗口 + 持有期收益 + **同期等权篮子超额**（`aqlab picks-backtest`）。
 - ✅ **v0.11** 全市场检验：B1 全市场重筛（5,424 只）+ 0AMV 波段闸门 + 离场规则引擎（止损止盈/白黄线/牵牛绳/滴滴）+ 开盘量能特征（`aqlab universe-study`）。
 - ✅ **v0.12** 长样本复核：21 个月分层抽样（13,492 笔）+ 开盘特征样本外检验（结论：开盘形态边际不稳定，0AMV 阶段与持有期才稳定）。
+- ✅ **v0.20** 文档闭环：案例研究重写为完整研究闭环（筛选规则 → 因子 IC → 组合检验 → 持有期稳健性 → Agent 评测），架构文档补齐三层定位与全部模块职责。
 - ✅ **v0.19** 持有期稳健性：多持有期 IC 期限结构（一次遍历）+ 短持有期方案复核——负 IC 在 1~20 日全部成立，两个持有期下四种方案都跑输等权基准。
 - ✅ **v0.18** 因子组合方案回测（闭环）：默认权重 / 反转 / 按滚动 IC 定权三选，权重只用过去 IC、显式 20bps 换手成本、基准为同期等权全市场；实测四种方案全部跑输基准，且反转方案显著更差。
 - ✅ **v0.17** 因子有效性研究：IC / IC_IR / 分位收益（含重叠窗口修正与因子预计算加速），全市场实测发现该样本期呈反转特征。
