@@ -31,15 +31,15 @@ from typing import Any, Protocol, Sequence
 from aqlab.tools import ToolRegistry, dumps
 
 __all__ = [
-    "ToolCall",
-    "LLMReply",
+    "SYSTEM_PROMPT",
+    "AgentResult",
     "LLMClient",
-    "ScriptedClient",
+    "LLMReply",
     "OpenAICompatClient",
     "ResearchAgent",
-    "AgentResult",
+    "ScriptedClient",
+    "ToolCall",
     "parse_text_tool_calls",
-    "SYSTEM_PROMPT",
 ]
 
 SYSTEM_PROMPT = """你是一个量化研究助手，只能通过工具获取事实。
@@ -107,10 +107,7 @@ def parse_text_tool_calls(content: str | None) -> list[ToolCall]:
             continue
         if not isinstance(data, dict):
             continue
-        if "tool_calls" in data and isinstance(data["tool_calls"], list):
-            items = data["tool_calls"]
-        else:
-            items = [data]
+        items = data["tool_calls"] if "tool_calls" in data and isinstance(data["tool_calls"], list) else [data]
         for item in items:
             if not isinstance(item, dict):
                 continue

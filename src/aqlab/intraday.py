@@ -20,14 +20,14 @@ import pandas as pd
 
 __all__ = [
     "IntradayConfig",
-    "opening_window_volume",
-    "opening_window_price",
-    "opening_volume_ratio",
-    "opening_features",
-    "standard_volume_ratio",
     "confirm_signals",
     "confirmed_signal_series",
     "generate_synthetic_minutes",
+    "opening_features",
+    "opening_volume_ratio",
+    "opening_window_price",
+    "opening_window_volume",
+    "standard_volume_ratio",
 ]
 
 _SESSION_MINUTES = 240  # 09:30-11:30 + 13:00-15:00
@@ -281,7 +281,7 @@ def generate_synthetic_minutes(
         weights = weights / weights.sum()
         volumes = weights * float(bar["volume"])
         stamps = pd.date_range(day + pd.Timedelta(hours=9, minutes=30), periods=_SESSION_MINUTES, freq="1min")
-        for stamp, volume in zip(stamps, volumes):
+        for stamp, volume in zip(stamps, volumes, strict=False):
             rows.append({"minute": stamp, "close": float(bar["close"]), "volume": float(volume)})
     out = pd.DataFrame(rows).set_index("minute")
     out.index.name = "minute"

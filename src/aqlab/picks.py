@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -22,11 +22,11 @@ import pandas as pd
 __all__ = [
     "PICK_BUCKETS",
     "PickBacktestConfig",
-    "load_picks_archive",
+    "attach_benchmark",
+    "benchmark_returns",
     "dedupe_picks",
     "evaluate_picks",
-    "benchmark_returns",
-    "attach_benchmark",
+    "load_picks_archive",
     "summarize_picks",
     "summary_markdown",
 ]
@@ -137,7 +137,7 @@ def load_picks_archive(archive_dir: str | Path, buckets: Iterable[str] | None = 
     for path in sorted(Path(archive_dir).glob("picks_*.json")):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001 - 坏文件跳过但不静默
+        except Exception:
             rows.append({"date": path.stem.replace("picks_", ""), "bucket": "_broken", "ts_code": "", "name": path.name, "score": np.nan})
             continue
         date = str(payload.get("date") or path.stem.replace("picks_", ""))
@@ -233,7 +233,7 @@ def summarize_picks(evaluated: pd.DataFrame, config: PickBacktestConfig | None =
         for horizon in config.horizons:
             values = pd.to_numeric(group[f"fwd_{horizon}"], errors="coerce")
             valid = values.dropna()
-            row[f"n_{horizon}"] = int(len(valid))
+            row[f"n_{horizon}"] = len(valid)
             row[f"mean_{horizon}"] = float(valid.mean()) if len(valid) else np.nan
             row[f"median_{horizon}"] = float(valid.median()) if len(valid) else np.nan
             row[f"win_{horizon}"] = float((valid > 0).mean()) if len(valid) else np.nan
@@ -246,7 +246,7 @@ def summarize_picks(evaluated: pd.DataFrame, config: PickBacktestConfig | None =
                     else pd.Series(np.nan, index=group.index)
                 )
                 paired = pd.DataFrame({"fwd": values, "bench": bench}).dropna()
-                row[f"npaired_{horizon}"] = int(len(paired))
+                row[f"npaired_{horizon}"] = len(paired)
                 row[bench_column] = float(paired["bench"].mean()) if len(paired) else np.nan
                 row[excess_column] = float((paired["fwd"] - paired["bench"]).mean()) if len(paired) else np.nan
                 row[f"excesswin_{horizon}"] = float(((paired["fwd"] - paired["bench"]) > 0).mean()) if len(paired) else np.nan
@@ -254,9 +254,9 @@ def summarize_picks(evaluated: pd.DataFrame, config: PickBacktestConfig | None =
 
     rows: list[dict] = []
     for bucket, group in evaluated.groupby("bucket"):
-        rows.append(fill({"bucket": bucket, "picks": int(len(group))}, group))
+        rows.append(fill({"bucket": bucket, "picks": len(group)}, group))
 
-    overall: dict[str, Any] = {"bucket": "全部", "picks": int(len(evaluated))}
+    overall: dict[str, Any] = {"bucket": "全部", "picks": len(evaluated)}
     rows.append(fill(overall, evaluated))
     table = pd.DataFrame(rows)
     table["_order"] = table["bucket"].map({b: i for i, b in enumerate(PICK_BUCKETS)}).fillna(9)

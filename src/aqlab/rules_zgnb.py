@@ -24,7 +24,7 @@ existing pipeline exactly like the generic rules.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -34,7 +34,6 @@ from aqlab.indicators_extra import (
     brick_chart,
     brick_streaks,
     kdj,
-    ma,
     pct_change_1d,
     rsl,
     white_line,
@@ -42,16 +41,16 @@ from aqlab.indicators_extra import (
 )
 
 __all__ = [
-    "B1Opportunity",
+    "PERSONAL_RULES",
+    "ActiveMarketValueGate",
     "B1Graded",
+    "B1Opportunity",
     "B2Confirm",
     "B3Confirm",
+    "BrickGreenToRed",
     "NeedleRSL",
     "VolumePriceV3",
-    "BrickGreenToRed",
     "brick_filter_mask",
-    "ActiveMarketValueGate",
-    "PERSONAL_RULES",
     "build_personal_rule",
 ]
 
@@ -99,7 +98,7 @@ class B1Opportunity:
     ) -> None:
         if pct_min >= pct_max:
             raise ValueError("pct_min must be < pct_max")
-        self.params = {
+        self.params: dict[str, Any] = {
             "j_max": j_max,
             "pct_min": pct_min,
             "pct_max": pct_max,
@@ -174,7 +173,7 @@ class B1Graded:
         brick_entry_max: int = 2,
         brick_block: int = 4,
     ) -> None:
-        self.params = {
+        self.params: dict[str, Any] = {
             "j_max": j_max,
             "spike_lookback": spike_lookback,
             "spike_multiple": spike_multiple,
@@ -311,7 +310,7 @@ class BrickGreenToRed:
     def __init__(self, ratio_threshold: float = 0.6667, require_green_to_red: bool = True) -> None:
         if ratio_threshold <= 0:
             raise ValueError("ratio_threshold must be > 0")
-        self.params = {"ratio_threshold": ratio_threshold, "require_green_to_red": require_green_to_red}
+        self.params: dict[str, Any] = {"ratio_threshold": ratio_threshold, "require_green_to_red": require_green_to_red}
 
     def chart(self, df: pd.DataFrame) -> pd.DataFrame:
         return brick_streaks(brick_chart(df))
@@ -341,7 +340,7 @@ class B2Confirm:
     def __init__(self, b1_window: int = 3, min_gain: float = 0.04, j_max: float = 55.0, require_volume_up: bool = True, b1_params: Mapping | None = None, b1_rule: str = "b1_graded") -> None:
         if b1_window < 1:
             raise ValueError("b1_window must be >= 1")
-        self.params = {
+        self.params: dict[str, Any] = {
             "b1_window": b1_window,
             "min_gain": min_gain,
             "j_max": j_max,
@@ -349,6 +348,7 @@ class B2Confirm:
             "b1_rule": b1_rule,
         }
         params = dict(b1_params or {})
+        self._b1: Any  # 两种 B1 规则实现交替赋值，统一按 Any 处理
         if b1_rule == "b1_graded":
             self._b1 = B1Graded(**params)
         elif b1_rule == "b1_opportunity":
@@ -411,7 +411,7 @@ class B3Confirm:
     def __init__(self, b2_window: int = 2, open_tolerance: float = 0.01, max_body: float = 0.02, b2_params: Mapping | None = None) -> None:
         if b2_window < 1:
             raise ValueError("b2_window must be >= 1")
-        self.params = {"b2_window": b2_window, "open_tolerance": open_tolerance, "max_body": max_body}
+        self.params: dict[str, Any] = {"b2_window": b2_window, "open_tolerance": open_tolerance, "max_body": max_body}
         self._b2 = B2Confirm(**dict(b2_params or {}))
 
     def signal(self, df: pd.DataFrame) -> pd.Series:
@@ -457,7 +457,7 @@ class NeedleRSL:
     ) -> None:
         if short_window >= long_window:
             raise ValueError("short_window must be < long_window")
-        self.params = {
+        self.params: dict[str, Any] = {
             "short_window": short_window,
             "long_window": long_window,
             "short_max": short_max,
@@ -510,7 +510,7 @@ class VolumePriceV3:
     ) -> None:
         if pct_min >= pct_max:
             raise ValueError("pct_min must be < pct_max")
-        self.params = {
+        self.params: dict[str, Any] = {
             "pct_min": pct_min,
             "pct_max": pct_max,
             "golden_low": golden_low,
@@ -599,7 +599,7 @@ class ActiveMarketValueGate:
             raise ValueError("require close_threshold < 0 < strong < very_strong")
         if self.normal_days < 1 or self.weak_days < 1:
             raise ValueError("window lengths must be >= 1")
-        self.params = {
+        self.params: dict[str, Any] = {
             "rho": self.rho,
             "strong": self.strong,
             "very_strong": self.very_strong,
@@ -628,7 +628,7 @@ class ActiveMarketValueGate:
         a = 0.0
         initialized = False
         out: list[float] = []
-        for vol, tov in zip(volume.to_numpy(), turnover.to_numpy()):
+        for vol, tov in zip(volume.to_numpy(), turnover.to_numpy(), strict=False):
             if np.isnan(vol):
                 out.append(a if initialized else np.nan)
                 continue

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -27,18 +27,18 @@ from aqlab.tables import markdown_table
 
 __all__ = [
     "PortfolioConfig",
-    "project_to_capped_simplex",
+    "apply_constraints",
     "covariance_matrix",
     "equal_weights",
-    "inverse_vol_weights",
-    "risk_parity_weights",
-    "min_variance_weights",
-    "mean_variance_weights",
-    "optimize_weights",
-    "apply_constraints",
     "exposure_report",
-    "simulate_portfolio",
     "format_portfolio_report",
+    "inverse_vol_weights",
+    "mean_variance_weights",
+    "min_variance_weights",
+    "optimize_weights",
+    "project_to_capped_simplex",
+    "risk_parity_weights",
+    "simulate_portfolio",
     "write_portfolio_report",
 ]
 
@@ -323,7 +323,6 @@ def simulate_portfolio(
     price = pd.DataFrame({s: df["close"].astype(float) for s, df in universe.items()}).reindex(dates).ffill()
     returns = price.pct_change()
 
-    value = 1.0
     cash = 1.0
     units: dict[str, float] = {}
     current_weights: dict[str, float] = {}

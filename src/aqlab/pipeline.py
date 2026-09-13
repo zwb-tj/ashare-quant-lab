@@ -30,7 +30,7 @@ import pandas as pd
 from aqlab.notify import ConsoleNotifier, Notifier
 from aqlab.rules import DEFAULT_RULE_BINDINGS, ActivityValueGate, RuleBinding, build_rule
 
-__all__ = ["DailyConfig", "DailyReport", "DailyPipeline", "write_daily_report"]
+__all__ = ["DailyConfig", "DailyPipeline", "DailyReport", "write_daily_report"]
 
 
 @dataclass

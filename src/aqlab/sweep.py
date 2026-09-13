@@ -18,23 +18,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-import numpy as np
 import pandas as pd
 
 from aqlab.portfolio import PortfolioConfig, simulate_portfolio
-from aqlab.rules import build_rule
 from aqlab.study import study_profile
 from aqlab.tables import markdown_table
 from aqlab.walkforward import WalkForwardConfig, composite_scores, walk_forward
 
 __all__ = [
-    "SweepConfig",
     "GridSpec",
-    "parse_grid",
-    "override_bindings",
-    "run_sweep",
-    "pick_best",
+    "SweepConfig",
     "format_sweep",
+    "override_bindings",
+    "parse_grid",
+    "pick_best",
+    "run_sweep",
     "write_sweep",
 ]
 
@@ -144,7 +142,7 @@ def run_sweep(
     for combination in itertools.product(*axes):
         overrides: dict[str, dict[str, Any]] = {}
         label_parts: list[str] = []
-        for grid, value in zip(grids, combination):
+        for grid, value in zip(grids, combination, strict=False):
             overrides.setdefault(grid.rule, {})[grid.param] = value
             label_parts.append(f"{grid.label}={value}")
         bindings = override_bindings(base_bindings, overrides)

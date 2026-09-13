@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -28,11 +28,11 @@ from aqlab.tables import markdown_table
 
 __all__ = [
     "WalkForwardConfig",
-    "composite_scores",
-    "window_bounds",
     "benchmark_return",
-    "walk_forward",
+    "composite_scores",
     "format_walkforward",
+    "walk_forward",
+    "window_bounds",
     "write_walkforward",
 ]
 
@@ -200,7 +200,7 @@ def walk_forward(
                 "window": i,
                 "start": str(pd.Timestamp(start).date()),
                 "end": str(pd.Timestamp(end).date()),
-                "trades": int(len(window_trades)),
+                "trades": len(window_trades),
                 "win_rate": float((returns > 0).mean()) if len(returns) else np.nan,
                 "avg_return": float(returns.mean()) if len(returns) else np.nan,
                 "median_return": float(returns.median()) if len(returns) else np.nan,
@@ -216,9 +216,9 @@ def walk_forward(
     windows_df = pd.DataFrame(rows)
     valid = windows_df[windows_df["trades"] > 0]
     summary = {
-        "windows": int(len(windows_df)),
-        "windows_with_trades": int(len(valid)),
-        "trades": int(len(trades_df)),
+        "windows": len(windows_df),
+        "windows_with_trades": len(valid),
+        "trades": len(trades_df),
         "win_rate": float(valid["win_rate"].mean()) if len(valid) else np.nan,
         "avg_return": float(valid["avg_return"].mean()) if len(valid) else np.nan,
         "avg_bench_return": float(valid["avg_bench_return"].mean()) if len(valid) else np.nan,

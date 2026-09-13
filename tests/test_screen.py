@@ -34,7 +34,7 @@ def test_min_history_filters_short_symbols():
 def test_as_of_uses_no_future_data():
     universe = make_universe(n_symbols=6, n_days=400, seed=11)
     full = factor_table(universe)
-    early_stamp = list(universe.values())[0].index[250]
+    early_stamp = next(iter(universe.values())).index[250]
     early = factor_table(universe, as_of=early_stamp)
     assert (early["date"] <= early_stamp).all()
     assert not full["date"].equals(early["date"])

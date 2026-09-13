@@ -15,7 +15,7 @@ from aqlab.metrics import compute_metrics
 
 matplotlib = pytest.importorskip("matplotlib", reason="charts need the optional 'plot' extra")
 
-from aqlab.charts import plot_drawdown, plot_equity_curves, plot_strategy_comparison  # noqa: E402
+from aqlab.charts import plot_drawdown, plot_equity_curves, plot_strategy_comparison
 
 
 def png_size(path):

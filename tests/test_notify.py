@@ -1,8 +1,6 @@
 import json
 import urllib.request
 
-import pytest
-
 from aqlab.notify import ConsoleNotifier, FeishuWebhookNotifier, build_feishu_card
 
 PICKS = [

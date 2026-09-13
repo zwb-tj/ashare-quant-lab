@@ -1,4 +1,4 @@
-"""Data layer: normalization, deterministic synthetic data, optional live fetchers.
+﻿"""Data layer: normalization, deterministic synthetic data, optional live fetchers.
 
 Design goals
 ------------
@@ -145,7 +145,7 @@ def fetch_tushare(
     The token falls back to the ``TUSHARE_TOKEN`` environment variable.
     """
     try:
-        import tushare as ts  # type: ignore
+        import tushare as ts
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ImportError("install the data extra: pip install 'ashare-quant-lab[data]'") from exc
 
@@ -170,7 +170,7 @@ def fetch_tushare_turnover(symbol: str, start: str, end: str, token: str | None 
     an estimate (and the reports say so).
     """
     try:
-        import tushare as ts  # type: ignore
+        import tushare as ts
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ImportError("install the data extra: pip install 'ashare-quant-lab[data]'") from exc
 
@@ -199,7 +199,7 @@ def fetch_akshare(symbol: str, start: str, end: str, adjust: str = "qfq") -> pd.
     ``symbol`` is a plain 6-digit A-share code, e.g. ``600519``.
     """
     try:
-        import akshare as ak  # type: ignore
+        import akshare as ak
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ImportError("install the data extra: pip install 'ashare-quant-lab[data]'") from exc
 
@@ -271,7 +271,7 @@ class TushareDataSource:
             return df
         try:
             turnover = self._turnover_fn(symbol, self.start, self.end, token=self.token)
-        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        except Exception as exc:
             self.turnover_available = False
             self.last_error = self.last_error or f"{symbol} turnover: {type(exc).__name__}: {exc}"
             return df
@@ -302,7 +302,7 @@ class TushareDataSource:
             return df
         try:
             df = self._fetch(symbol, self.start, self.end, token=self.token)
-        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        except Exception as exc:
             self.last_error = f"{symbol}: {type(exc).__name__}: {exc}"
             self.degraded = True
             raise KeyError(f"无法获取 {symbol} 且无本地缓存（{self.last_error}）") from exc

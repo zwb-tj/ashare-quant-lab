@@ -14,7 +14,6 @@ import os
 import sys
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -25,14 +24,14 @@ import pandas as pd
 from aqlab.data import normalize_ohlcv
 
 __all__ = [
-    "DEFAULT_PYBAO",
     "DEFAULT_HTTP",
-    "stockdb_available",
+    "DEFAULT_PYBAO",
+    "StockDbDataSource",
+    "export_sample",
     "fetch_daily",
     "fetch_minute",
     "fetch_minute_http",
-    "export_sample",
-    "StockDbDataSource",
+    "stockdb_available",
 ]
 
 DEFAULT_PYBAO = r"D:\software\数据\stockdb\pybao"
@@ -45,7 +44,7 @@ def _load_rd(pybao_path: str | None = None):
     path = pybao_path or os.environ.get("AQLAB_STOCKDB_PYBAO") or DEFAULT_PYBAO
     if path not in sys.path:
         sys.path.insert(0, path)
-    from stock_sdk import rd  # type: ignore
+    from stock_sdk import rd
 
     return rd
 
@@ -54,7 +53,7 @@ def stockdb_available(pybao_path: str | None = None) -> bool:
     try:
         _load_rd(pybao_path)
         return True
-    except Exception:  # noqa: BLE001 - 可用性探测
+    except Exception:
         return False
 
 

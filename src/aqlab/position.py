@@ -20,19 +20,19 @@ BBI 离场                  收盘连续 2 日跌破 BBI → 清仓
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from aqlab.indicators_extra import bbi_line, kdj, ma, white_line, yellow_line
+from aqlab.indicators_extra import bbi_line, kdj, white_line, yellow_line
 
 __all__ = [
+    "ExitEvent",
     "PositionConfig",
     "TradePlan",
-    "ExitEvent",
-    "plan_position",
     "defend_score",
+    "plan_position",
     "simulate_exit",
     "simulate_signals",
 ]
@@ -225,7 +225,10 @@ def simulate_exit(
         bar_close, bar_high, bar_low = float(close.iloc[i]), float(high.iloc[i]), float(low.iloc[i])
         profit_peak = max(profit_peak, bar_high / entry_price - 1.0)
 
-        def record(action: str, reason: str, price: float, fraction: float) -> None:
+        # 绑定当轮的 i/date/offset：函数只在本轮内调用，绑定后闭包不再依赖循环变量
+        def record(
+            action: str, reason: str, price: float, fraction: float, i=i, date=date, offset=offset
+        ) -> None:
             nonlocal remaining, realised
             fraction = min(fraction, remaining)
             events.append(ExitEvent(i, date, action, reason, price, fraction, offset))

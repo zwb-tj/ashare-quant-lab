@@ -20,23 +20,23 @@ A gate maps a whole universe to a market on/off series.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 
 import numpy as np
 import pandas as pd
 
-from aqlab.indicators import pct_change_n, sma
+from aqlab.indicators import sma
 
 __all__ = [
+    "DEFAULT_RULE_BINDINGS",
+    "RULES",
+    "ActivityValueGate",
+    "NeedleBelowMA",
     "Rule",
     "RuleBinding",
     "TieredPullback",
-    "NeedleBelowMA",
     "VolumePriceSurge",
-    "ActivityValueGate",
-    "RULES",
     "build_rule",
-    "DEFAULT_RULE_BINDINGS",
 ]
 
 
@@ -44,7 +44,7 @@ class Rule(Protocol):
     """A scoring rule: price history in, score in [0, 1] out."""
 
     name: str
-    params: dict
+    params: dict[str, Any]
 
     def score(self, df: pd.DataFrame) -> pd.Series: ...
 
@@ -99,7 +99,7 @@ class TieredPullback:
             raise ValueError("tiers and tier_scores must have the same length")
         if ma_window < 2 or trend_window < 2:
             raise ValueError("windows must be >= 2")
-        self.params = {
+        self.params: dict[str, Any] = {
             "ma_window": ma_window,
             "trend_window": trend_window,
             "tiers": [tuple(t) for t in tiers],
@@ -119,7 +119,7 @@ class TieredPullback:
             base = base & (close >= ma * 0.995)
 
         out = pd.Series(0.0, index=df.index)
-        for (lo, hi), value in zip(self.params["tiers"], self.params["tier_scores"]):
+        for (lo, hi), value in zip(self.params["tiers"], self.params["tier_scores"], strict=False):
             hit = base & (depth > lo) & (depth <= hi)
             out = out.where(~hit, value)
         return _clean(out, df.index)
@@ -153,7 +153,7 @@ class NeedleBelowMA:
             raise ValueError("ma_window must be >= 2")
         if not 0 < min_shadow_ratio <= full_score_ratio:
             raise ValueError("require 0 < min_shadow_ratio <= full_score_ratio")
-        self.params = {
+        self.params: dict[str, Any] = {
             "ma_window": ma_window,
             "min_shadow_ratio": min_shadow_ratio,
             "max_close_below_ma": max_close_below_ma,
@@ -171,7 +171,7 @@ class NeedleBelowMA:
         hit = pierced & recovered & ma.notna() & (shadow >= self.params["min_shadow_ratio"])
 
         span = self.params["full_score_ratio"] - self.params["min_shadow_ratio"]
-        scaled = (shadow - self.params["min_shadow_ratio"]) / span if span > 0 else 1.0
+        scaled = (shadow - self.params["min_shadow_ratio"]) / span if span > 0 else pd.Series(1.0, index=shadow.index)
         out = scaled.clip(0.0, 1.0).where(hit, 0.0)
         return _clean(out, df.index)
 
@@ -207,7 +207,7 @@ class VolumePriceSurge:
             raise ValueError("min_price_change and volume_multiple must be positive")
         if confirm_days < 0:
             raise ValueError("confirm_days must be >= 0")
-        self.params = {
+        self.params: dict[str, Any] = {
             "min_price_change": min_price_change,
             "volume_multiple": volume_multiple,
             "volume_window": volume_window,
@@ -261,14 +261,14 @@ class ActivityValueGate:
     on_threshold: float = 0.02
     off_threshold: float = -0.01
     name: str = "activity_value_gate"
-    params: dict = field(init=False, default_factory=dict)
+    params: dict[str, Any] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.fast_window < 2 or self.slow_window <= self.fast_window:
             raise ValueError("require 2 <= fast_window < slow_window")
         if not self.off_threshold < self.on_threshold:
             raise ValueError("off_threshold must be smaller than on_threshold")
-        self.params = {
+        self.params: dict[str, Any] = {
             "fast_window": self.fast_window,
             "slow_window": self.slow_window,
             "on_threshold": self.on_threshold,

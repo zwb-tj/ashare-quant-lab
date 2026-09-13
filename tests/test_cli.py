@@ -4,7 +4,6 @@
 每个子命令都断言"退出码 0 + 产出文件存在"，比只跑 pytest 单元测试更接近真实使用。
 """
 
-import pandas as pd
 import pytest
 
 from aqlab.cli import main

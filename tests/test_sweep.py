@@ -4,7 +4,6 @@ import pandas as pd
 import pytest
 
 from aqlab.sweep import (
-    GridSpec,
     SweepConfig,
     format_sweep,
     override_bindings,

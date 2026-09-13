@@ -20,7 +20,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -29,7 +29,7 @@ import pandas as pd
 from aqlab.indicators import atr
 from aqlab.indicators_extra import white_line, yellow_line
 
-__all__ = ["ExitConfig", "TradeResult", "simulate_trade", "EXIT_REASONS"]
+__all__ = ["EXIT_REASONS", "ExitConfig", "TradeResult", "simulate_trade"]
 
 EXIT_REASONS = {
     "death_cross": "白线下穿黄线（牵牛绳断）",
@@ -79,7 +79,7 @@ class ExitConfig:
             raise ValueError("take_profit_pct must be > 0")
 
     def params(self) -> dict[str, Any]:
-        return {name: getattr(self, name) for name in self.__dataclass_fields__}  # type: ignore[attr-defined]
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 @dataclass
@@ -150,9 +150,13 @@ def simulate_trade(
         # 1. 死叉清仓（牵牛绳断）
         if config.use_death_cross and np.isfinite(white.iloc[position]) and np.isfinite(yellow.iloc[position]):
             previous_white, previous_yellow = white.iloc[position - 1], yellow.iloc[position - 1]
-            if np.isfinite(previous_white) and np.isfinite(previous_yellow):
-                if white.iloc[position] < yellow.iloc[position] and previous_white >= previous_yellow:
-                    return _result(position, frame, price, "death_cross", bars, entry_price, best, worst)
+            if (
+                np.isfinite(previous_white)
+                and np.isfinite(previous_yellow)
+                and white.iloc[position] < yellow.iloc[position]
+                and previous_white >= previous_yellow
+            ):
+                return _result(position, frame, price, "death_cross", bars, entry_price, best, worst)
 
         # 2. 白线两日破位
         if config.use_white_break and np.isfinite(white.iloc[position]) and white.iloc[position] > 0:
@@ -191,9 +195,8 @@ def simulate_trade(
         # 5. ATR 止损
         if can_stop and config.mode == "atr" and atr_series is not None:
             value = float(atr_series.iloc[entry_position])
-            if np.isfinite(value):
-                if price < entry_price - value * config.atr_multiple:
-                    return _result(position, frame, price, "stop_atr", bars, entry_price, best, worst)
+            if np.isfinite(value) and price < entry_price - value * config.atr_multiple:
+                return _result(position, frame, price, "stop_atr", bars, entry_price, best, worst)
 
         # 6. 到期
         if config.max_holding_days is not None and bars >= config.max_holding_days:

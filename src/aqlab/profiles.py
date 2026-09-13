@@ -17,7 +17,7 @@ from typing import Any
 from aqlab.rules import DEFAULT_RULE_BINDINGS, ActivityValueGate
 from aqlab.rules_zgnb import ActiveMarketValueGate
 
-__all__ = ["PROFILES", "load_profile", "list_profiles", "build_gate", "GATES"]
+__all__ = ["GATES", "PROFILES", "build_gate", "list_profiles", "load_profile"]
 
 PROFILES: dict[str, list[tuple[str, dict[str, Any], float]]] = {
     "generic": list(DEFAULT_RULE_BINDINGS),

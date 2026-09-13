@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 data = ["tushare>=1.2", "akshare>=1.10"]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4", "pytest-cov>=4.1", "matplotlib>=3.7"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "matplotlib>=3.7", "ruff>=0.6", "mypy>=1.11"]
 
 [project.scripts]
 aqlab = "aqlab.cli:main"
@@ -30,3 +30,32 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+# ---- lint / type policy (pinned in-repo so CI and local runs agree) ----
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["data", "output", "build", "dist"]
+
+[tool.ruff.lint]
+# Correctness first: pycodestyle errors, pyflakes, import order, bugbear, simplifications,
+# comprehensions and ruff-specific smells. Deliberately not "ALL" — a rule set the project
+# actually keeps green is worth more than a long list that gets suppressed.
+select = ["E4", "E7", "E9", "F", "W", "I", "B", "C4", "SIM", "RUF"]
+# RUF001-003 flag ambiguous/full-width punctuation, which is intentional in Chinese docstrings.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately compare NaN with itself (x != x) and assert on private helpers.
+"tests/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+# The numeric core is pandas/numpy-heavy; strict mode would mostly fight the stubs.
+check_untyped_defs = false
+disallow_untyped_defs = false
+exclude = ["^data/", "^output/", "^build/", "^dist/"]

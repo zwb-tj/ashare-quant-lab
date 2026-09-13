@@ -28,7 +28,7 @@ def format_cell(value: Any) -> str:
         if value != value:  # NaN
             return "n/a"
         if abs(value) != float("inf") and abs(value - round(value)) < 1e-9 and abs(value) < 1e12:
-            return str(int(round(value)))
+            return str(round(value))
         return f"{value:.4f}".rstrip("0").rstrip(".")
     if isinstance(value, bool):
         return "true" if value else "false"

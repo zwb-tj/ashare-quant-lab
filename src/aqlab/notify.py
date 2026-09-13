@@ -12,6 +12,7 @@ constructed from environment variables at the edge of the pipeline.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import urllib.error
@@ -19,7 +20,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
-__all__ = ["NotifyResult", "Notifier", "ConsoleNotifier", "FeishuWebhookNotifier", "build_feishu_card"]
+__all__ = ["ConsoleNotifier", "FeishuWebhookNotifier", "Notifier", "NotifyResult", "build_feishu_card"]
 
 
 @dataclass
@@ -124,10 +125,8 @@ class FeishuWebhookNotifier:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 body = response.read().decode("utf-8", errors="ignore")
             parsed: Any = {}
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 parsed = json.loads(body)
-            except json.JSONDecodeError:
-                pass
             code = parsed.get("code", parsed.get("StatusCode", 0)) if isinstance(parsed, dict) else 0
             ok = code in (0, None)
             return NotifyResult(ok=ok, channel="feishu", detail=body[:300], payload=payload)

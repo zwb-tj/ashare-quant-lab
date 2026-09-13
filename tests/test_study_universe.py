@@ -4,7 +4,6 @@
 ③ 大盘阶段门只挡买入、且用"昨天收盘已知的状态"判定。
 """
 
-import numpy as np
 import pandas as pd
 import pytest
 

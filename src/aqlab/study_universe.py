@@ -23,7 +23,7 @@ from aqlab.exits import ExitConfig, simulate_trade
 from aqlab.indicators_extra import white_line, yellow_line
 from aqlab.rules_zgnb import ActiveMarketValueGate, build_personal_rule
 
-__all__ = ["UniverseStudyConfig", "load_universe_daily", "equal_weight_index", "study_universe", "summarize_trades"]
+__all__ = ["UniverseStudyConfig", "equal_weight_index", "load_universe_daily", "study_universe", "summarize_trades"]
 
 
 @dataclass
@@ -45,7 +45,7 @@ def load_universe_daily(daily_dir: str | Path, limit: int | None = None) -> dict
             break
         try:
             frame = pd.read_csv(path, parse_dates=["date"]).set_index("date")
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
         if len(frame) > 30:
             frames[path.stem] = frame
@@ -98,7 +98,7 @@ def study_universe(
         frame = frame.sort_index()
         try:
             signal = rule.signal(frame)
-        except Exception:  # noqa: BLE001 - 数据太短的票直接跳过
+        except Exception:
             continue
         hits = np.flatnonzero(np.asarray(signal.fillna(False), dtype=bool))
         if len(hits) == 0:
@@ -127,7 +127,6 @@ def study_universe(
             bench = np.nan
             if len(index) and entry_date in index.index and result.exit_date is not None and result.exit_date in index.index:
                 bench = float(index.loc[result.exit_date] / index.loc[entry_date] - 1.0)
-            exit_position = result.exit_position
             records = {
                 "symbol": symbol,
                 "signal_date": signal_date,
@@ -160,7 +159,7 @@ def study_universe(
     meta = {
         "rule": config.rule,
         "rule_params": config.rule_params,
-        "trades": int(len(table)),
+        "trades": len(table),
         "gated_out": gated_out,
         "symbols": len(frames),
         "start": config.start,
@@ -184,7 +183,7 @@ def summarize_trades(table: pd.DataFrame, by: str | None = None) -> pd.DataFrame
             t_stat = float(excess.mean() / (excess.std(ddof=1) / np.sqrt(len(excess))))
         row = {
             "组": label,
-            "笔数": int(len(group)),
+            "笔数": len(group),
             "平均收益%": round(float(returns.mean()) * 100, 2) if len(returns) else np.nan,
             "中位收益%": round(float(returns.median()) * 100, 2) if len(returns) else np.nan,
             "胜率%": round(float((returns > 0).mean()) * 100, 1) if len(returns) else np.nan,

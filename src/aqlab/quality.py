@@ -18,7 +18,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
@@ -27,11 +27,11 @@ from aqlab.tables import markdown_table
 
 __all__ = [
     "QualityConfig",
-    "check_frame",
     "audit_universe",
+    "check_frame",
     "cross_source_diff",
-    "snapshot_hash",
     "format_audit",
+    "snapshot_hash",
     "write_audit",
 ]
 
@@ -110,7 +110,7 @@ def check_frame(symbol: str, df: pd.DataFrame, config: QualityConfig | None = No
                 }
             )
 
-    missing = int(ordered[["open", "high", "low", "close"]].isna().sum().sum()) if set(["open", "high", "low", "close"]).issubset(ordered.columns) else 0
+    missing = int(ordered[["open", "high", "low", "close"]].isna().sum().sum()) if {"open", "high", "low", "close"}.issubset(ordered.columns) else 0
     if missing:
         issues.append({"symbol": symbol, "type": "missing_values", "detail": f"OHLC 缺失 {missing} 个", "severity": "error"})
 
@@ -133,7 +133,7 @@ def audit_universe(universe: Mapping[str, pd.DataFrame], config: QualityConfig |
         rows.append(
             {
                 "symbol": symbol,
-                "bars": int(len(frame)),
+                "bars": len(frame),
                 "first": str(frame.index.min().date()) if len(frame) else "",
                 "last": str(frame.index.max().date()) if len(frame) else "",
                 "errors": len(errors),
@@ -172,7 +172,7 @@ def cross_source_diff(symbol: str, left: pd.DataFrame, right: pd.DataFrame, tole
     ]
     result = {
         "symbol": symbol,
-        "common_days": int(len(common)),
+        "common_days": len(common),
         "close_mismatch_rate": round(float((close_rel > tolerance).mean()), 4),
         "worst_close_diff": round(float(close_rel.max()), 4) if len(close_rel.dropna()) else np.nan,
         "examples": examples,
@@ -198,7 +198,7 @@ def format_audit(table: pd.DataFrame, diffs: list[dict] | None = None, hashes: M
         lines.append("没有可审计的数据。")
         return "\n".join(lines)
     summary = {
-        "标的数": int(len(table)),
+        "标的数": len(table),
         "有 error 的标的": int((table["errors"] > 0).sum()),
         "有 warning 的标的": int((table["warnings"] > 0).sum()),
         "缺少换手率的标的": int((table["infos"] > 0).sum()),

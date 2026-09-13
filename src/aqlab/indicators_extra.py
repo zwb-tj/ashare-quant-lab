@@ -17,16 +17,16 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
-    "rsl",
-    "kdj",
     "amplitude",
+    "bbi_line",
+    "brick_chart",
+    "kdj",
+    "ma",
     "pct_change_1d",
+    "rsl",
+    "sma_tdx",
     "white_line",
     "yellow_line",
-    "bbi_line",
-    "ma",
-    "sma_tdx",
-    "brick_chart",
 ]
 
 
@@ -202,7 +202,7 @@ def brick_streaks(chart: pd.DataFrame) -> pd.DataFrame:
     red_streak: list[int] = []
     green_streak: list[int] = []
     r = g = 0
-    for is_red, is_green in zip(chart["red"].to_numpy() > 0, chart["green"].to_numpy() > 0):
+    for is_red, is_green in zip(chart["red"].to_numpy() > 0, chart["green"].to_numpy() > 0, strict=False):
         if is_red:
             r += 1
             g = 0

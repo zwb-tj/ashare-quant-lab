@@ -1,6 +1,5 @@
 """持仓/离场管理测试（v0.5）。"""
 
-import numpy as np
 import pandas as pd
 import pytest
 

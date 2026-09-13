@@ -1,6 +1,5 @@
 """Walk-forward 滚动窗口校验测试。"""
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -31,7 +30,7 @@ class StubRule:
 
     def __init__(self, at=(5,), value=1.0):
         self.params = {"at": list(at), "value": value}
-        self._at = set(int(i) for i in at)
+        self._at = {int(i) for i in at}
         self._value = float(value)
 
     def score(self, df: pd.DataFrame) -> pd.Series:

@@ -25,13 +25,13 @@ from aqlab.agent import LLMClient, ResearchAgent, ScriptedClient
 from aqlab.tools import ToolRegistry
 
 __all__ = [
-    "EvalTask",
     "EvalReport",
+    "EvalTask",
     "default_tasks",
     "extract_numbers",
+    "format_eval_report",
     "grounding_report",
     "run_eval",
-    "format_eval_report",
 ]
 
 _NUMBER = re.compile(r"-?\d+(?:\.\d+)?")

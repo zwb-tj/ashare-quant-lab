@@ -146,24 +146,24 @@ def test_b1_turnover_condition():
 def test_b2_requires_gain_j_and_volume():
     closes = [100.0 * 0.98 ** i for i in range(12)]
     closes[-1] = closes[-2] * 0.99
-    step1 = closes + [closes[-1] * 1.025, closes[-1] * 1.025 * 1.022]
+    step1 = [*closes, closes[-1] * 1.025, closes[-1] * 1.025 * 1.022]
     volumes = [1000.0] * len(closes) + [1500.0, 2200.0]
     df = frame(step1, volumes=volumes)
     rule = B2Confirm(b1_rule="b1_opportunity")  # 用简化版 B1 隔离 B2 自身逻辑
     assert bool(rule.signal(df).iloc[-1]) is True
 
     # not enough gain -> no signal
-    flat = frame(closes + [closes[-1] * 1.001, closes[-1] * 1.002], volumes=volumes)
+    flat = frame([*closes, closes[-1] * 1.001, closes[-1] * 1.002], volumes=volumes)
     assert bool(rule.signal(flat).iloc[-1]) is False
 
 
 def test_b3_requires_doji_after_b2_and_flat_open():
     closes = [100.0 * 0.98 ** i for i in range(12)]
     closes[-1] = closes[-2] * 0.99
-    step1 = closes + [closes[-1] * 1.025, closes[-1] * 1.025 * 1.022]
+    step1 = [*closes, closes[-1] * 1.025, closes[-1] * 1.025 * 1.022]
     volumes = [1000.0] * len(closes) + [1500.0, 2200.0]
-    step2 = step1 + [step1[-1] * 1.004]                      # doji-ish small body
-    df = frame(step2, volumes=volumes + [1000.0])            # keep the volume profile of the B2 bar
+    step2 = [*step1, step1[-1] * 1.004]                      # doji-ish small body
+    df = frame(step2, volumes=[*volumes, 1000.0])            # keep the volume profile of the B2 bar
     df.loc[df.index[-1], "open"] = step1[-1]                 # flat open
     assert bool(B3Confirm(b2_params={"b1_rule": "b1_opportunity"}).signal(df).iloc[-1]) is True
 
@@ -226,7 +226,7 @@ class _FakePctGate(ActiveMarketValueGate):
         super().__init__(**kwargs)
         self._pcts = pd.Series(pcts, dtype=float, index=pd.bdate_range("2024-01-01", periods=len(pcts)))
 
-    def pct_series(self, universe):  # noqa: D102 - test double
+    def pct_series(self, universe):
         return self._pcts
 
 
@@ -251,7 +251,7 @@ def test_active_shares_fallback_estimates_float_shares():
 class _ConstantSharesGate(ActiveMarketValueGate):
     """Gate with a constant active-share vector: isolates the index aggregation."""
 
-    def active_shares(self, df):  # noqa: D102 - test double
+    def active_shares(self, df):
         return pd.Series(1.0, index=df.index)
 
 
@@ -299,9 +299,9 @@ def test_profiles_are_registered_and_loadable():
         bindings = load_profile(name)
         assert bindings and all(weight > 0 for _r, _p, weight in bindings)
 
-    needle20 = dict((r, p) for r, p, _w in load_profile("needle_20"))
+    needle20 = {r: p for r, p, _w in load_profile("needle_20")}
     assert needle20["needle_rsl"]["short_max"] == 20.0
-    needle30 = dict((r, p) for r, p, _w in load_profile("needle_30"))
+    needle30 = {r: p for r, p, _w in load_profile("needle_30")}
     assert needle30["needle_rsl"]["short_max"] == 30.0 and needle30["needle_rsl"]["long_min"] == 85.0
 
     # copies are returned, so callers cannot mutate the registry

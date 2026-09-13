@@ -17,7 +17,7 @@ import pandas as pd
 
 from aqlab.intraday import IntradayConfig, confirm_signals
 
-__all__ = ["ConfirmEvalConfig", "evaluate_confirmation", "attach_benchmark", "summarize_confirmation"]
+__all__ = ["ConfirmEvalConfig", "attach_benchmark", "evaluate_confirmation", "summarize_confirmation"]
 
 
 @dataclass
@@ -146,7 +146,7 @@ def summarize_confirmation(details: pd.DataFrame, config: ConfirmEvalConfig | No
             column = f"fwd_{horizon}"
             values = pd.to_numeric(group[column], errors="coerce")
             valid = values.dropna()
-            row[f"n_{horizon}"] = int(len(valid))
+            row[f"n_{horizon}"] = len(valid)
             row[f"mean_{horizon}"] = float(valid.mean()) if len(valid) else np.nan
             row[f"win_{horizon}"] = float((valid > 0).mean()) if len(valid) else np.nan
             if has_benchmark:
@@ -164,8 +164,8 @@ def summarize_confirmation(details: pd.DataFrame, config: ConfirmEvalConfig | No
 
     rows: list[dict] = []
     for decision, group in details.groupby("decision"):
-        rows.append(fill({"decision": decision, "signals": int(len(group))}, group))
-    overall: dict = {"decision": "全部", "signals": int(len(details))}
+        rows.append(fill({"decision": decision, "signals": len(group)}, group))
+    overall: dict = {"decision": "全部", "signals": len(details)}
     rows.append(fill(overall, details))
     order = {"买入": 0, "观望": 1, "无法判断": 2, "全部": 3}
     table = pd.DataFrame(rows)

@@ -211,7 +211,7 @@ def test_simulate_portfolio_charges_costs_on_drift():
     n = 60
     universe = price_frame({"FAST": list(100 * 1.02 ** np.arange(n)), "FLAT": list(100 * np.ones(n))})
     signals = {s: pd.Series(True, index=universe[s].index) for s in universe}
-    base = dict(method="equal", rebalance_days=1, max_weight=1.0, cash_buffer=0.0, turnover_limit=2.0, min_history=20)
+    base = {"method": "equal", "rebalance_days": 1, "max_weight": 1.0, "cash_buffer": 0.0, "turnover_limit": 2.0, "min_history": 20}
 
     free = simulate_portfolio(universe, signals, PortfolioConfig(**base, cost_bps=0.0))
     costly = simulate_portfolio(universe, signals, PortfolioConfig(**base, cost_bps=100.0))

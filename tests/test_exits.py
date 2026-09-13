@@ -29,31 +29,32 @@ def frame_from(closes, lows=None, highs=None, start="2020-01-01"):
 
 def quiet_config(**overrides):
     """关掉所有"抢戏"的规则，每次只测一条。"""
-    base = dict(
-        mode="fixed",
-        stop_pct=0.03,
-        intraday_stop_pct=None,
-        take_profit_pct=None,
-        min_holding_days=0,
-        use_death_cross=False,
-        use_white_break=False,
-        didi_mode="off",
-    )
+    base = {
+        "mode": "fixed",
+        "stop_pct": 0.03,
+        "intraday_stop_pct": None,
+        "take_profit_pct": None,
+        "min_holding_days": 0,
+        "use_death_cross": False,
+        "use_white_break": False,
+        "didi_mode": "off",
+    }
     base.update(overrides)
     return ExitConfig(**base)
 
 
 def test_death_cross_exits_on_the_cross_bar():
     # 先涨后跌，逼出白线下穿黄线
-    closes = list(np.linspace(10, 25, 160)) + list(np.linspace(25, 12, 60))
+    closes = [*np.linspace(10, 25, 160), *np.linspace(25, 12, 60)]
     frame = frame_from(closes)
     white, yellow = white_line(frame), yellow_line(frame)
     cross = None
     for position in range(1, len(frame)):
-        if np.isfinite(yellow.iloc[position]) and np.isfinite(yellow.iloc[position - 1]):
-            if white.iloc[position] < yellow.iloc[position] and white.iloc[position - 1] >= yellow.iloc[position - 1]:
-                cross = position
-                break
+        both_finite = np.isfinite(yellow.iloc[position]) and np.isfinite(yellow.iloc[position - 1])
+        crossed = white.iloc[position] < yellow.iloc[position] and white.iloc[position - 1] >= yellow.iloc[position - 1]
+        if both_finite and crossed:
+            cross = position
+            break
     assert cross is not None, "合成数据没有造出死叉"
 
     entry = cross - 5
@@ -121,7 +122,7 @@ def test_take_profit_fills_at_the_trigger_price():
 
 
 def test_atr_stop_triggers_after_a_large_drop():
-    closes = list(np.linspace(10, 12, 40)) + [10.0]
+    closes = [*list(np.linspace(10, 12, 40)), 10.0]
     frame = frame_from(closes)
     result = simulate_trade(frame, 39, quiet_config(mode="atr", atr_multiple=2.0))
     assert result.reason in ("stop_atr", "no_exit")

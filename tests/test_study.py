@@ -1,13 +1,15 @@
 """规则事件研究测试（v0.5）。"""
 
+from typing import ClassVar
+
 import pandas as pd
 import pytest
 
 from aqlab.profiles import load_profile
 from aqlab.study import (
     baseline_stats,
-    forward_returns,
     format_study,
+    forward_returns,
     rule_event_study,
     study_profile,
     write_study,
@@ -28,7 +30,7 @@ class StubRule:
     """只在指定 bar 触发的最小规则，用于手算校验。"""
 
     name = "stub"
-    params = {"at": 0}
+    params: ClassVar[dict] = {"at": 0}
 
     def __init__(self, at: int = 0):
         self.params = {"at": at}
@@ -78,7 +80,7 @@ def test_baseline_stats_pools_all_bars():
 def test_study_profile_rows_columns_and_determinism():
     source = SyntheticDataSource(n_symbols=8, n_days=300, seed=11)
     universe = {sym: source.bars(sym) for sym in source.symbols()}
-    bindings = load_profile("needle_20") + [("brick_green_to_red", {}, 0.5)]
+    bindings = [*load_profile("needle_20"), ("brick_green_to_red", {}, 0.5)]
 
     table, baseline = study_profile(universe, bindings, horizons=(1, 5), min_history=60)
     assert set(table["rule"]) == {"needle_rsl", "brick_green_to_red"}

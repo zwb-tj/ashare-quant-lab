@@ -12,7 +12,7 @@ Key realism rules (these are what make the numbers credible):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 import numpy as np
@@ -133,7 +133,7 @@ def _extract_trades(pos: pd.Series, close: pd.Series, cost_rate: float) -> pd.Da
     if "open" not in trades.columns:
         trades["open"] = False
     trades["open"] = trades["open"].fillna(False).astype(bool)
-    return trades[columns + ["open"]]
+    return trades[[*columns, "open"]]
 
 
 def run_backtest(df: pd.DataFrame, positions: pd.Series, config: BacktestConfig | None = None, name: str = "strategy") -> BacktestResult:

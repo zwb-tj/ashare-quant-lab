@@ -11,9 +11,11 @@ Examples
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from aqlab.backtest import BacktestConfig, run_backtest
 from aqlab.data import generate_synthetic_ohlcv, load_ohlcv_csv, make_universe
@@ -131,10 +133,13 @@ def cmd_screen(args: argparse.Namespace) -> int:
 
 def cmd_fetch(args: argparse.Namespace) -> int:
     if args.source == "tushare":
-        from aqlab.data import fetch_tushare as fetch
+        from aqlab.data import fetch_tushare
+
+        df = fetch_tushare(args.symbol, args.start, args.end)
     else:
-        from aqlab.data import fetch_akshare as fetch
-    df = fetch(args.symbol, args.start, args.end)
+        from aqlab.data import fetch_akshare
+
+        df = fetch_akshare(args.symbol, args.start, args.end)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, encoding="utf-8-sig")
@@ -241,7 +246,7 @@ def cmd_daily(args: argparse.Namespace) -> int:
         if not args.symbols:
             print("--tushare 需要同时提供 --symbols 600519.SH,000001.SZ", file=sys.stderr)
             return 2
-        source = TushareDataSource(
+        source: Any = TushareDataSource(
             symbols=[s.strip() for s in args.symbols.split(",") if s.strip()],
             start=args.start or "2020-01-01",
             end=args.end or args.date or str(pd.Timestamp.today().date()),
@@ -282,7 +287,7 @@ def cmd_study(args: argparse.Namespace) -> int:
     from aqlab.tools import CsvDataSource, SyntheticDataSource
 
     if args.data_dir:
-        source = CsvDataSource(args.data_dir)
+        source: Any = CsvDataSource(args.data_dir)
     else:
         source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
 
@@ -311,7 +316,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     from aqlab.tools import CsvDataSource, SyntheticDataSource
 
     if args.data_dir:
-        source = CsvDataSource(args.data_dir)
+        source: Any = CsvDataSource(args.data_dir)
     else:
         source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
 
@@ -343,7 +348,7 @@ def cmd_walkforward(args: argparse.Namespace) -> int:
     from aqlab.walkforward import WalkForwardConfig, format_walkforward, walk_forward, write_walkforward
 
     if args.data_dir:
-        source = CsvDataSource(args.data_dir)
+        source: Any = CsvDataSource(args.data_dir)
     else:
         source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
 
@@ -369,7 +374,6 @@ def cmd_walkforward(args: argparse.Namespace) -> int:
 
 def cmd_portfolio(args: argparse.Namespace) -> int:
     from aqlab.portfolio import (
-        METHODS,
         PortfolioConfig,
         exposure_report,
         format_portfolio_report,
@@ -382,7 +386,7 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
     from aqlab.walkforward import composite_scores
 
     if args.data_dir:
-        source = CsvDataSource(args.data_dir)
+        source: Any = CsvDataSource(args.data_dir)
     else:
         source = SyntheticDataSource(n_symbols=args.symbols_count, n_days=args.days, seed=args.seed)
 
@@ -425,7 +429,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     universes: dict[str, dict] = {}
     if args.data_dir:
-        source = CsvDataSource(args.data_dir)
+        source: Any = CsvDataSource(args.data_dir)
         universes[args.data_dir] = {sym: source.bars(sym) for sym in source.symbols()}
     else:
         for n in sizes:
@@ -451,7 +455,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     if args.out:
         out = Path(args.out) / "sweep"
-        paths = write_sweep(out, table, meta={"profile": args.profile or "generic", "sets": args.set or [], "sizes": sizes})
+        write_sweep(out, table, meta={"profile": args.profile or "generic", "sets": args.set or [], "sizes": sizes})
         (out / "sweep.md").write_text(format_sweep(table, config, best), encoding="utf-8")
         print(f"\n报告已写入：{out / 'sweep.md'}")
     return 0
@@ -645,7 +649,7 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
             continue
         try:
             frame = fetch_daily(symbol, start, args.data_end)
-        except Exception:  # noqa: BLE001 - 记录失败，不让整轮崩
+        except Exception:
             failed.append(symbol)
             continue
         if frame.empty:
@@ -673,7 +677,7 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
                     if frame.empty:
                         continue
                     frame.to_csv(path, encoding="utf-8-sig")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             if len(frame) > 0:
                 basket[symbol] = frame
@@ -687,7 +691,7 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
                     frame.to_csv(path, encoding="utf-8-sig")
                 else:
                     frame = load_ohlcv_csv(path)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
             if len(frame) > 0:
                 basket[path.stem] = frame
@@ -729,7 +733,7 @@ def cmd_picks_backtest(args: argparse.Namespace) -> int:
             if not minute_path.exists() or args.refresh:
                 try:
                     minute = fetch_minute(symbol, minute_start, minute_end)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     skipped.append(symbol)
                     continue
                 if minute.empty:
@@ -1197,11 +1201,9 @@ def _make_output_encoding_safe() -> None:
             continue
         try:
             reconfigure(encoding="utf-8")
-        except Exception:  # noqa: BLE001 - 老终端不支持就退到 replace
-            try:
+        except Exception:
+            with contextlib.suppress(Exception):
                 reconfigure(errors="replace")
-            except Exception:  # noqa: BLE001
-                pass
 
 
 def main(argv: list[str] | None = None) -> int:

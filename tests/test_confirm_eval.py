@@ -29,7 +29,7 @@ def daily_frame(closes, start="2026-06-01"):
 
 def minute_frame(dates, window_closes, per_day=6, volume=100.0):
     rows = []
-    for date, price in zip(dates, window_closes):
+    for date, price in zip(dates, window_closes, strict=False):
         base = pd.Timestamp(date) + pd.Timedelta(minutes=9 * 60 + 30)
         for i in range(per_day):
             rows.append({"minute": base + pd.Timedelta(minutes=i), "close": float(price), "volume": volume})
@@ -39,7 +39,7 @@ def minute_frame(dates, window_closes, per_day=6, volume=100.0):
 def test_opening_window_price_takes_the_last_bar_inside_the_window():
     dates = pd.bdate_range("2026-06-01", periods=2)
     bars = []
-    for day, prices in zip(dates, ([10.0, 11.0, 12.0, 13.0], [20.0, 21.0, 22.0, 23.0])):
+    for day, prices in zip(dates, ([10.0, 11.0, 12.0, 13.0], [20.0, 21.0, 22.0, 23.0]), strict=False):
         base = pd.Timestamp(day) + pd.Timedelta(minutes=9 * 60 + 30)
         for i, price in enumerate(prices):
             bars.append({"minute": base + pd.Timedelta(minutes=i), "close": price, "volume": 1.0})
@@ -57,7 +57,7 @@ def test_returns_start_at_the_decision_not_at_the_signal():
     signal = pd.Series(False, index=daily.index)
     signal.iloc[0] = True
 
-    base = dict(window_minutes=3, baseline_days=1, min_ratio=1.0, horizons=(1, 2))
+    base = {"window_minutes": 3, "baseline_days": 1, "min_ratio": 1.0, "horizons": (1, 2)}
     window_close, _ = evaluate_confirmation(daily, minute, signal, ConfirmEvalConfig(entry="window_close", **base), symbol="X")
     row = window_close.iloc[0]
     assert row["decision"] == "买入"                      # 量比 = 100/100 = 1.0

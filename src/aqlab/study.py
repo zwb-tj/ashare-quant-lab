@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -24,11 +23,11 @@ from aqlab.rules import build_rule
 from aqlab.tables import markdown_table
 
 __all__ = [
-    "forward_returns",
     "baseline_stats",
+    "format_study",
+    "forward_returns",
     "rule_event_study",
     "study_profile",
-    "format_study",
     "write_study",
 ]
 
@@ -54,7 +53,7 @@ def _stats(returns: pd.Series) -> dict:
     if clean.empty:
         return {"n": 0, "mean": np.nan, "median": np.nan, "win_rate": np.nan, "p25": np.nan, "p75": np.nan}
     return {
-        "n": int(len(clean)),
+        "n": len(clean),
         "mean": float(clean.mean()),
         "median": float(clean.median()),
         "win_rate": float((clean > 0).mean()),
@@ -72,7 +71,7 @@ def baseline_stats(universe: Mapping[str, pd.DataFrame], horizons: Sequence[int]
             stat = _stats(fwd[f"fwd_{h}"])
             stat.update({"symbol": symbol, "horizon": h})
             rows.append(stat)
-    frame = pd.DataFrame(rows)
+    pd.DataFrame(rows)
     pooled = []
     for h in horizons:
         all_returns = pd.concat([forward_returns(df, horizons)[f"fwd_{h}"] for df in universe.values()])

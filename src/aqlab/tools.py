@@ -17,7 +17,7 @@ Design rules (these are the guardrails that make the agent auditable):
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
@@ -32,12 +32,12 @@ from aqlab.screen import ScreenConfig, rank_universe
 from aqlab.strategies import STRATEGIES, build_strategy
 
 __all__ = [
+    "INDICATORS",
+    "CsvDataSource",
     "DataSource",
     "SyntheticDataSource",
-    "CsvDataSource",
     "ToolRegistry",
     "ToolSpec",
-    "INDICATORS",
     "default_registry",
 ]
 
@@ -77,7 +77,7 @@ class SyntheticDataSource:
             "source": "synthetic",
             "seed": self._seed,
             "symbols": self.symbols(),
-            "bars_per_symbol": int(len(next(iter(self._universe.values())))),
+            "bars_per_symbol": len(next(iter(self._universe.values()))),
             "first_date": str(first.date()),
             "last_date": str(last.date()),
         }
@@ -109,7 +109,7 @@ class CsvDataSource:
             "source": "csv",
             "directory": str(self.directory),
             "symbols": symbols,
-            "bars_per_symbol": int(len(self.bars(symbols[0]))) if symbols else 0,
+            "bars_per_symbol": len(self.bars(symbols[0])) if symbols else 0,
         }
 
 
@@ -193,7 +193,7 @@ class ToolRegistry:
             return self._tools[name].func(**args)
         except TypeError as exc:
             return _err(f"bad arguments for '{name}': {exc}")
-        except Exception as exc:  # noqa: BLE001 - tools must never raise to the agent
+        except Exception as exc:
             return _err(f"{type(exc).__name__}: {exc}")
 
     # -- registration -------------------------------------------------------------
@@ -316,7 +316,7 @@ class ToolRegistry:
         ]
         return _ok(
             symbol=symbol,
-            rows=int(len(df)),
+            rows=len(df),
             first_date=str(df.index[0].date()),
             last_date=str(df.index[-1].date()),
             last_close=_round(closes.iloc[-1], 2),
@@ -345,7 +345,7 @@ class ToolRegistry:
             mean=_round(series.mean()),
             min=_round(series.min()),
             max=_round(series.max()),
-            observations=int(len(series)),
+            observations=len(series),
         )
 
     def _run_backtest(
@@ -391,7 +391,7 @@ class ToolRegistry:
             symbol=symbol,
             strategy=strategy,
             params={k: _round(v) for k, v in strat.params.items()},
-            bars=int(len(df)),
+            bars=len(df),
             fee_bps=config.fee_bps,
             slippage_bps=config.slippage_bps,
             metrics=payload,
@@ -419,7 +419,7 @@ class ToolRegistry:
             )
         return _ok(
             as_of=str(table["date"].iloc[0].date()) if len(table) else None,
-            universe_size=int(len(table)),
+            universe_size=len(table),
             top=rows,
         )
 

@@ -9,7 +9,6 @@ Execution realism — the one-bar delay, fees and slippage — lives entirely in
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import pandas as pd
@@ -17,12 +16,12 @@ import pandas as pd
 from aqlab.indicators import pct_change_n, rolling_zscore, sma
 
 __all__ = [
-    "Strategy",
-    "MomentumStrategy",
+    "STRATEGIES",
+    "BuyAndHoldStrategy",
     "MACrossStrategy",
     "MeanReversionStrategy",
-    "BuyAndHoldStrategy",
-    "STRATEGIES",
+    "MomentumStrategy",
+    "Strategy",
     "build_strategy",
 ]
 
@@ -36,7 +35,7 @@ class Strategy(ABC):
         self.params: dict[str, Any] = params
         self.validate()
 
-    def validate(self) -> None:
+    def validate(self) -> None:  # noqa: B027 - 可选钩子：子类不实现也应能实例化
         """Override to validate parameters early (fail fast, with a clear message)."""
 
     @abstractmethod

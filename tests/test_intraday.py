@@ -10,8 +10,8 @@ from aqlab.intraday import (
     confirm_signals,
     confirmed_signal_series,
     generate_synthetic_minutes,
-    opening_volume_ratio,
     opening_features,
+    opening_volume_ratio,
     opening_window_price,
     opening_window_volume,
     standard_volume_ratio,
@@ -165,7 +165,7 @@ def test_confirm_signals_buy_watch_and_no_decision():
 
     table = confirm_signals(signal, ratio, config)
     assert len(table) == 4
-    decisions = dict(zip(table["signal_date"], table["decision"]))
+    decisions = dict(zip(table["signal_date"], table["decision"], strict=False))
     assert decisions["2024-01-08"] == "买入"
     assert decisions["2024-01-10"] == "买入"
     assert decisions["2024-01-11"] == "买入"

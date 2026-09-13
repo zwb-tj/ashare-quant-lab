@@ -17,7 +17,7 @@ import pandas as pd
 
 from aqlab.metrics import drawdown_series
 
-__all__ = ["plot_equity_curves", "plot_drawdown", "plot_strategy_comparison"]
+__all__ = ["plot_drawdown", "plot_equity_curves", "plot_strategy_comparison"]
 
 
 def _pyplot():
@@ -28,7 +28,7 @@ def _pyplot():
         import matplotlib.pyplot as plt
 
         return plt
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         raise RuntimeError('charts need the optional "plot" extra: pip install -e ".[plot]"') from error
 
 
@@ -101,7 +101,7 @@ def plot_strategy_comparison(
         axes = [axes]
     labels = summary[label_column].astype(str).tolist()
     positions = np.arange(len(labels))
-    for axis, column in zip(axes, metrics):
+    for axis, column in zip(axes, metrics, strict=False):
         values = pd.to_numeric(summary[column], errors="coerce").to_numpy(dtype=float)
         colors = ["#2e7d32" if value >= 0 else "#c0392b" for value in np.nan_to_num(values)]
         axis.bar(positions, np.nan_to_num(values), color=colors, alpha=0.85)

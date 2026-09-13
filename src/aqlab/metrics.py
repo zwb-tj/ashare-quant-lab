@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-__all__ = ["compute_metrics", "format_metrics", "drawdown_series"]
+__all__ = ["compute_metrics", "drawdown_series", "format_metrics"]
 
 _PCT_KEYS = {
     "total_return",
@@ -101,7 +101,7 @@ def compute_metrics(
         closed = trades[~trades.get("open", False).astype(bool)] if "open" in trades else trades
         closed = closed if len(closed) else trades
         net = closed["net_return"].astype(float)
-        metrics["trades"] = int(len(closed))
+        metrics["trades"] = len(closed)
         metrics["win_rate_trade"] = float((net > 0).mean())
         metrics["avg_trade"] = float(net.mean())
         metrics["avg_bars_held"] = float(closed["bars_held"].mean())
