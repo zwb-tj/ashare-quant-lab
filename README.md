@@ -1,10 +1,38 @@
 ﻿# A-Share Quant Lab (`aqlab`)
 
 [![ci](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml)
+![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
+![coverage](https://img.shields.io/badge/coverage-89%25-brightgreen)
+![license](https://img.shields.io/badge/license-MIT-green)
 
 **一个从零实现、可复现的 A 股选股 + 回测实验室**，包含显式的执行成本模型、无未来函数的信号执行、横截面因子打分、**可审计的 LLM 研究代理（tool calling）**，以及一条可测试的 CLI。仓库为 **clean-room 原创实现**：不含任何第三方项目代码或整理内容。
 
 > 不是又一个"翻倍策略"仓库。这是一个把**研究纪律**写在代码里的工具：成本要显式、执行要延迟一根 K 线、策略要能被证伪、**代理说的每个数字都必须来自工具**。
+
+## 项目亮点
+
+| 维度 | 具体数字 / 事实 |
+| --- | --- |
+| **测试与质量** | **282 个测试**（28 个测试模块，全部离线、无需网络与 API key）｜**覆盖率 89%**，CI 门禁 `--cov-fail-under=85`｜CI 在 Python **3.10 / 3.11 / 3.12** 三版本矩阵上跑测试 + CLI 冒烟 |
+| **真实数据规模** | 本地行情库（LevelDB）**5,424 只标的**，日线覆盖 2000 年起、分钟线 2025-01 起（每日 241 根）｜单次全市场研究 **58,682 笔**交易、2025-01 ~ 2026-09（21 个月） |
+| **统计严谨性** | 所有结论都给**样本数 + 均值 + 同期基准超额 + Welch t 值**；基准用**全市场等权指数**（同入场日、同持有期）｜**24 个口径组合的稳健性检查**（窗口 7/8 根 × 全天 240/241 分钟 × 方向口径 × 阈值 3/4/5） |
+| **可证伪的研究结论** | 有 **5 条假设被自己的数据否决**并写进文档：选股规则 334 条记录超额 -0.40 ~ -4.23%（t=-2.25 ~ -5.58，24 格中 13 格显著为负）；"高量比+开盘上冲"在 21 个月长样本上反转（-0.53% → +0.21%）；结构离场把持有期从 10~20 天压到 3~5 天、超额从 ≈0 变成 -0.13 ~ -0.17；白线破位单条规则占 57% 的交易且平均 -1.55% |
+| **工程实践** | 无未来函数（信号统一延迟一根 K 线，并有专门断言它的测试）｜显式手续费/滑点/份额记账/换手约束｜确定性合成数据 + 固定种子，输出可逐字节复现｜CLI **18 个子命令**，其中 **11 个由端到端测试**真跑（含中文列名 CSV、全市场研究、量比确认） |
+| **LLM / Agent 层** | 只读工具层 + 有界代理循环 + 全步骤 trace + 可靠性评测（工具落地率 / 幻觉率 / 弃答率），并有"代理说的每个数字必须来自工具"的约束 |
+| **文档** | 中文 README + [English README](README.en.md) + [案例研究（研究闭环与负面结果）](docs/CASE_STUDY.md) + [架构说明](docs/ARCHITECTURE.md) + [路线图](docs/ROADMAP.md) |
+
+**技术栈**：Python 3.10+ ｜ numpy / pandas（核心零第三方策略依赖）｜ pytest + pytest-cov ｜ GitHub Actions ｜ 本地 LevelDB 行情库（C++ 引擎 + Python SDK）｜ 可选：tushare / akshare / matplotlib
+
+```mermaid
+flowchart LR
+    A["Data layer<br/>local LevelDB quote store<br/>CSV / tushare / akshare"] --> B["Indicators<br/>MA / EMA / KDJ / RSI / ATR<br/>white line, yellow line, bricks"]
+    B --> C["Rules & scoring<br/>graded pullback, needle,<br/>volume-price surge, 0AMV gate"]
+    C --> D["Backtest core<br/>no-lookahead execution,<br/>fees &amp; slippage, position sizing"]
+    D --> E["Evaluation<br/>walk-forward, parameter sweep,<br/>event study, universe study"]
+    E --> F["Surfaces<br/>aqlab CLI (18 commands)<br/>daily pipeline + notify"]
+    F --> G["LLM agent layer<br/>read-only tools, bounded loop,<br/>trace + reliability eval"]
+    A -.-> E
+```
 
 ---
 
@@ -22,7 +50,7 @@
 # 1) 安装（可编辑模式，附开发依赖）
 pip install -e ".[dev]"
 
-# 2) 跑测试（216 个用例，全部离线，无需网络/API key）
+# 2) 跑测试（282 个用例，全部离线，无需网络/API key）
 pytest -q
 
 # 3) 三分钟看结果：内置策略在同一份合成行情上的对比
@@ -218,7 +246,7 @@ ashare-quant-lab/
 │   ├── sweep.py           # 参数扫描：事件研究 + 滚动窗口 + 组合层三合一的格点对比
 │   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
-├── tests/                 # 216 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
+├── tests/                 # 282 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
 ├── examples/              # 离线 demo 脚本 + 示例报告
 ├── docs/                  # 架构说明与路线图
 └── .github/workflows/     # CI：多 Python 版本跑 pytest
