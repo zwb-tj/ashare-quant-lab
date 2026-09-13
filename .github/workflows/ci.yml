@@ -40,7 +40,11 @@ jobs:
         if: matrix.python-version == '3.12'
         run: pytest -q --cov=aqlab --cov-report=term --cov-fail-under=85
 
-      - name: Reproduce every README figure and verify it against the committed assets
+      # Gates on regenerability: every figure in the README must be reproducible by the
+      # current code. Identity with the committed files is a same-platform property
+      # (bbox_inches="tight" crops to the text extent and fonts differ on CI), so identity
+      # is verified locally with --strict rather than failing here.
+      - name: Reproduce every README figure
         if: matrix.python-version == '3.12'
         run: python scripts/reproduce_all.py --verify
 

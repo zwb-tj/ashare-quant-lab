@@ -30,9 +30,9 @@
   negative and quantile returns decrease monotonically, i.e. the sample behaves as a reversal market, the
   opposite of the shipped momentum weights.
 - **Reproducibility runs on every push**: CI executes `reproduce_all.py --verify` on Python 3.12 (about 35 s), so
-  every figure in this README must be regenerable by the current code; verification is graded - the default requires
-  identical image dimensions (stable across platforms because they follow figsize/dpi) and only reports pixel
-  differences caused by fonts, while `--strict` demands byte equality on the author's platform.
+  every figure in this README must be regenerable by the current code. Differences against the committed files are
+  reported rather than fatal there, because `bbox_inches="tight"` crops to the text extent and CI fonts differ from
+  the author's machine; `--strict` enforces full identity locally, where the platform is the same.
 - **Reproducibility is checkable**: `scripts/reproduce_all.py --verify` regenerates every figure into a temporary
   directory and compares it byte-for-byte with the committed copies - all eight charts match (four synthetic ones in
   about 35 seconds, four real-market ones in about 23.5 minutes). Matplotlib output here is deterministic, so

@@ -17,8 +17,8 @@
     python scripts/reproduce_all.py --full --verify # 校验全部
     python scripts/reproduce_all.py --verify --strict  # 要求逐字节一致（本机）
 
-校验分两级：默认要求**图片尺寸一致**（尺寸由 figsize/dpi 决定，跨平台稳定），像素不同只报告不拦——
-CI 跑在 Linux、字体与作者本机不同，逐字节相等只在同一平台上成立；``--strict`` 用于本机严格校验。
+校验分两级：默认（CI）只要求**每个产物都被重新生成**，差异仅作报告；``--strict``（本机）要求与已提交图完全一致。
+原因：``bbox_inches="tight"`` 按文字尺寸裁剪，跨平台字体不同会让尺寸与像素都变，硬比对只会产生假警报。
 """
 
 from __future__ import annotations
@@ -163,9 +163,12 @@ def verify_assets(
 ) -> list[dict]:
     """把产出与已提交的 ``docs/assets`` 比对。
 
-    ``strict=True``（本机默认）：必须逐字节一致，否则状态为 ``DIFFERS``。
-    ``strict=False``（CI 默认）：**尺寸必须一致**；字节不同则记为 ``differs-pixels``
-    （字体/渲染差异，报告但不拦），尺寸不同仍然是 ``DIFFERS``。
+    状态含义：``match``（逐字节一致）、``differs-pixels``（PNG 尺寸相同、字节不同）、
+    ``differs-size``（PNG 尺寸不同）、``DIFFERS``（非 PNG 或读不出尺寸的差异）、``missing-*``。
+
+    退出码由 :func:`summarize_verification` 决定：严格模式任何差异都失败；
+    默认（CI）只把"产物没生成出来"当失败——``bbox_inches="tight"`` 会按文字尺寸裁剪，
+    跨平台字体不同会让尺寸与像素都变，硬比对只会产生假警报。
     """
     rows: list[dict] = []
     for step in steps:
@@ -181,8 +184,11 @@ def verify_assets(
             else:
                 size_now, size_ref = png_size(source), png_size(target)
                 detail = f"{size_now} vs {size_ref}" if size_now and size_ref else f"{source.stat().st_size}B vs {target.stat().st_size}B"
-                if size_now and size_ref and size_now == size_ref and not strict:
+                if size_now and size_ref and size_now == size_ref:
                     rows.append({"asset": committed, "status": "differs-pixels", "detail": f"same size {size_now}, different bytes"})
+                elif size_now and size_ref:
+                    note = "" if strict else " (size follows text via bbox_inches='tight', so it can differ across fonts)"
+                    rows.append({"asset": committed, "status": "differs-size", "detail": f"{detail}{note}"})
                 else:
                     rows.append({"asset": committed, "status": "DIFFERS", "detail": detail})
     return rows
@@ -197,19 +203,27 @@ def _print_table(rows: list[list[str]], header: list[str]) -> None:
         print("| " + " | ".join(str(row[i]).ljust(widths[i]) for i in range(len(header))) + " |")
 
 
-def summarize_verification(rows: list[dict]) -> dict:
-    """把校验结果折成退出码策略：只有"尺寸不同/文件缺失"才算失败。
+def summarize_verification(rows: list[dict], strict: bool = False) -> dict:
+    """把校验结果折成退出码策略。
 
-    ``match`` 与 ``differs-pixels`` 都通过；``differs-pixels`` 表示图片尺寸一致但像素不同，
-    通常是字体/渲染平台差异（本机跑 ``--strict`` 会把它升级成失败）。
+    * ``strict=True``（本机）：任何与已提交图不一致的状态都算失败——这是"图与代码完全一致"的证明；
+    * ``strict=False``（CI 默认）：门禁只要求**每个产物都被重新生成出来**（文件存在），
+      差异只报告。原因很实际：``bbox_inches="tight"`` 会按文字尺寸裁剪，跨平台字体不同，
+      连图片**尺寸**都可能变，硬比对会变成假警报。CI 因此保证"可再生成"，
+      本机 `--strict` 保证"完全一致"。
     """
     exact = [row for row in rows if row["status"] == "match"]
     pixels = [row for row in rows if row["status"] == "differs-pixels"]
-    broken = [row for row in rows if row["status"] not in ("match", "differs-pixels")]
+    sizes = [row for row in rows if row["status"] == "differs-size"]
+    missing = [row for row in rows if row["status"].startswith("missing")]
+    differences = [row for row in rows if row["status"] != "match"]
+    broken = differences if strict else list(missing)
     return {
         "exit_code": 1 if broken else 0,
         "exact": len(exact),
         "pixels": len(pixels),
+        "sizes": len(sizes),
+        "missing": len(missing),
         "broken": broken,
     }
 
@@ -267,17 +281,24 @@ def main(argv: list[str] | None = None) -> int:
         rows = verify_assets(steps, out_root, strict=args.strict)
         print()
         _print_table([[row["asset"], row["status"], row["detail"] or "-"] for row in rows], ["asset", "status", "detail"])
-        outcome = summarize_verification(rows)
+        outcome = summarize_verification(rows, strict=args.strict)
         exit_code = max(exit_code, outcome["exit_code"])
-        if outcome["broken"]:
-            print(f"\n校验未通过：{len(outcome['broken'])} 个产物与已提交版本不一致（尺寸/缺失不同：可能图过期了）")
-        elif outcome["pixels"]:
-            print(
-                f"\n校验通过（非严格）：{outcome['exact']} 个逐字节一致、{outcome['pixels']} 个尺寸一致但像素不同"
-                "（通常是字体/渲染平台差异；在本机跑 `--strict` 可要求逐字节一致）"
-            )
+        if outcome["missing"]:
+            print(f"\n校验未通过：{outcome['missing']} 个产物没有生成出来（步骤失败或路径变了）")
+        elif args.strict:
+            if outcome["exact"] == len(rows):
+                print(f"\n严格校验通过：{(outcome['exact'])} 个已提交图表与现场生成的结果逐字节一致")
+            else:
+                print(
+                    f"\n严格校验未通过：逐字节一致 {outcome['exact']} 个、"
+                    f"同尺寸不同像素 {outcome['pixels']} 个、尺寸不同 {outcome['sizes']} 个"
+                )
         else:
-            print(f"\n校验通过：{outcome['exact']} 个已提交图表与现场生成的结果逐字节一致")
+            print(
+                f"\n校验通过（可再生成）：{len(rows)} 个产物全部重新生成；"
+                f"与已提交图逐字节一致 {outcome['exact']} 个、同尺寸不同像素 {outcome['pixels']} 个、"
+                f"尺寸不同 {outcome['sizes']} 个（跨平台字体差异所致；本机 `--strict` 可要求完全一致）"
+            )
 
     if temporary is not None:
         if args.keep:

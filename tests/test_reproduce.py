@@ -81,7 +81,7 @@ def test_verify_assets_reports_match_difference_and_missing_in_strict_mode(tmp_p
     _write(produced / "charts" / "a.png", "PNG-A")
     _write(assets / "a.png", "PNG-A")                 # 一致
     _write(produced / "charts" / "b.png", "PNG-B")
-    _write(assets / "b.png", "PNG-B-CHANGED")         # 不一致
+    _write(assets / "b.png", "PNG-B-CHANGED")         # 不一致（非 PNG，读不出尺寸 -> DIFFERS）
     _write(assets / "c.png", "PNG-C")                 # 产出缺失
     _write(produced / "charts" / "d.png", "PNG-D")    # 已提交版本缺失
 
@@ -89,8 +89,8 @@ def test_verify_assets_reports_match_difference_and_missing_in_strict_mode(tmp_p
     assert rows == {"a.png": "match", "b.png": "DIFFERS", "c.png": "missing-produced", "d.png": "missing-committed"}
 
 
-def test_non_strict_mode_tolerates_pixel_differences_but_not_size_differences(tmp_path):
-    """CI 跑在 Linux、字体不同：同尺寸不同像素只报告；尺寸不同仍然致命。"""
+def test_verify_assets_distinguishes_pixel_from_size_differences(tmp_path):
+    """PNG 的两种差异要分得清：同尺寸不同像素 vs 尺寸不同。"""
     produced = tmp_path / "produced"
     assets = tmp_path / "assets"
     _png(produced / "charts" / "same.png", (240, 160), "white")
@@ -100,26 +100,38 @@ def test_non_strict_mode_tolerates_pixel_differences_but_not_size_differences(tm
 
     rows = {row["asset"]: row["status"] for row in verify_assets([_step(("same.png", "size.png"))], produced, assets, strict=False)}
     assert rows["same.png"] == "differs-pixels"
-    assert rows["size.png"] == "DIFFERS"
-    # 严格模式下，"同尺寸不同像素"同样算不一致
-    strict_rows = {row["asset"]: row["status"] for row in verify_assets([_step(("same.png",))], produced, assets, strict=True)}
-    assert strict_rows["same.png"] == "DIFFERS"
+    assert rows["size.png"] == "differs-size"
 
 
-def test_summarize_verification_sets_the_exit_code_policy():
-    """退出码策略：只有尺寸不同/缺失才失败；像素差异在非严格模式下不拦。"""
+def test_summarize_verification_gates_regenerability_by_default():
+    """默认（CI）只把"产物没生成出来"当失败；严格（本机）任何差异都失败。"""
     from reproduce_all import summarize_verification
 
     rows = [
         {"asset": "a.png", "status": "match", "detail": ""},
         {"asset": "b.png", "status": "differs-pixels", "detail": "same size"},
+        {"asset": "c.png", "status": "differs-size", "detail": "240x160 vs 300x160"},
     ]
-    outcome = summarize_verification(rows)
-    assert outcome["exit_code"] == 0 and outcome["exact"] == 1 and outcome["pixels"] == 1
+    relaxed = summarize_verification(rows, strict=False)
+    assert relaxed["exit_code"] == 0, "跨平台渲染差异不该让 CI 变红"
+    assert (relaxed["exact"], relaxed["pixels"], relaxed["sizes"]) == (1, 1, 1)
+    assert summarize_verification(rows, strict=True)["exit_code"] == 1
 
-    rows.append({"asset": "c.png", "status": "DIFFERS", "detail": "240x160 vs 300x160"})
-    outcome = summarize_verification(rows)
-    assert outcome["exit_code"] == 1 and [row["asset"] for row in outcome["broken"]] == ["c.png"]
+    missing = [{"asset": "d.png", "status": "missing-produced", "detail": "charts/d.png"}]
+    assert summarize_verification(missing, strict=False)["exit_code"] == 1, "产物没生成出来必须失败"
+    assert summarize_verification(missing, strict=True)["exit_code"] == 1
 
-    rows = [{"asset": "d.png", "status": "missing-produced", "detail": "charts/d.png"}]
-    assert summarize_verification(rows)["exit_code"] == 1
+
+def test_summarize_verification_reports_counts():
+    """汇总函数要给出各类计数，供 CI 日志与退出码共用。"""
+    from reproduce_all import summarize_verification
+
+    rows = [
+        {"asset": "a.png", "status": "match", "detail": ""},
+        {"asset": "b.png", "status": "differs-pixels", "detail": "same size"},
+        {"asset": "c.png", "status": "differs-size", "detail": "240x160 vs 300x160"},
+    ]
+    outcome = summarize_verification(rows, strict=True)
+    assert outcome["exact"] == 1 and outcome["pixels"] == 1 and outcome["sizes"] == 1
+    assert outcome["missing"] == 0
+    assert [row["asset"] for row in outcome["broken"]] == ["b.png", "c.png"]
