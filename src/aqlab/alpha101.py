@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -75,7 +75,7 @@ class Panel:
         return self.close.pct_change()
 
 
-def build_panel(daily_by_symbol: dict[str, pd.DataFrame]) -> Panel:
+def build_panel(daily_by_symbol: Mapping[str, pd.DataFrame]) -> Panel:
     """把 ``{symbol: OHLCV frame}`` 拼成面板；缺失字段按可用性尽力补齐。"""
     fields: dict[str, dict[str, pd.Series]] = {}
     for symbol, frame in daily_by_symbol.items():

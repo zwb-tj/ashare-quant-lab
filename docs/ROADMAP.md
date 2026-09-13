@@ -240,6 +240,12 @@
 - `aqlab factor-ic --alpha101`：真实全市场 IC / 期限结构评估，111 个组合中 41 个 |t| > 2。
 - 待办：样本外切分与多重比较校正（111 次检验需要更严的门槛）。
 
+## v0.26 · 多重比较校正与样本外验证（✅ 已完成，2026-09）
+
+- `src/aqlab/multiple_testing.py`：Bonferroni 与 Benjamini-Hochberg FDR 自实现（无 scipy 依赖），p 值用 `math.erfc` 精确给出；与 statsmodels 的 `fdr_bh` 逐元素对照一致（差 1e-16）。
+- `src/aqlab/factor_eval.py`：全样本 / 样本内 / 样本外三段 IC，先切分再取样（修正了两段截面重叠的缺陷）。
+- 真实全市场：41（不校正）→ 35（BH）→ 28（Bonferroni）→ **11/16 样本外存活**；样本内最强的 α008/α001 样本外失效。
+
 ## 长期（工程化）
 - 类型检查（mypy）与 lint（ruff）接入 CI；报告产物归档为 artifact。
 - 参数稳健性：walk-forward、参数敏感性矩阵（部分已实现，见 v0.4.4 / v0.6）。

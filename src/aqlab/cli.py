@@ -1315,113 +1315,117 @@ def _portfolio_sensitivity(universe, signals, config, args) -> dict:
 
 
 def _alpha101_ic(frames, args, horizons) -> int:
-    """对 self-implemented 的公式因子（Alpha101 子集）逐个算 IC / 分位收益 / 期限结构。"""
-    import numpy as np
+    """公式因子（Alpha101 子集）评估：全样本 IC + 多重比较校正 + 样本内/外验证。
+
+    这里**不重算**统计量，而是调用 `aqlab.factor_eval`——保证 CLI 与库用同一套口径
+    （CLI 只做展示，业务逻辑留在库里，见 docs/ARCHITECTURE.md）。
+    """
     import pandas as pd
 
-    from aqlab.alpha101 import SKIPPED, build_panel, compute_alphas
-    from aqlab.factor_ic import spearman_ic
+    from aqlab.alpha101 import SKIPPED
+    from aqlab.factor_eval import FactorEvalConfig, evaluate_factor_ics
     from aqlab.report_html import write_html_report
     from aqlab.tables import markdown_table
 
-    panel = build_panel(frames)
-    # 因子本身要求一段预热；评估用的 min_history 再额外保证截面样本充足
-    values = compute_alphas(panel, min_history=args.min_history)
-    if not values:
-        print("没有算出任何 alpha 因子（检查 --min-history 与数据长度）")
+    horizon_list = tuple(int(h) for h in horizons) or (args.forward,)
+    config = FactorEvalConfig(
+        horizons=horizon_list,
+        step_days=max(1, int(args.step)),
+        min_history=args.min_history,
+        min_symbols=args.min_symbols,
+        alpha=float(getattr(args, "alpha", 0.05)),
+        is_fraction=float(getattr(args, "is_fraction", 0.5)),
+    )
+    try:
+        outcome = evaluate_factor_ics(frames, config)
+    except ValueError as error:
+        print(f"无法评估：{error}")
         return 1
-    print(f"标的 {len(panel.symbols)} 只｜交易日 {len(panel.dates)}｜因子 {len(values)} 个"
-          f"（另有 {len(SKIPPED)} 个因缺行业/市值数据显式跳过）")
+    table = outcome["table"]
+    panel = outcome["panel"]
+    print(f"标的 {len(panel.symbols)} 只｜交易日 {len(panel.dates)}｜因子 {table['factor'].nunique()} 个"
+          f"（另有 {len(SKIPPED)} 个因缺行业/市值数据显式跳过）"
+          f"｜样本内/外切分日 {outcome['split_date'].date()}")
 
-    horizons = tuple(int(h) for h in horizons) or (args.forward,)
-    step = max(1, int(args.step))
-    dates = list(panel.dates)
-    usable = dates[::step]
-
-    rows: list[dict] = []
-    for name, frame in values.items():
-        for horizon in horizons:
-            ics: list[float] = []
-            for as_of in usable:
-                if as_of not in frame.index:
-                    continue
-                position = frame.index.get_loc(as_of)
-                target = position + horizon
-                if target >= len(frame):
-                    continue
-                factor_row = frame.iloc[position]
-                close_row = panel.close.iloc[position]
-                exit_row = panel.close.iloc[target]
-                forward = (exit_row / close_row - 1.0).replace([np.inf, -np.inf], np.nan)
-                if factor_row.notna().sum() < args.min_symbols:
-                    continue
-                value = spearman_ic(factor_row, forward)
-                if value == value:
-                    ics.append(value)
-            if not ics:
-                continue
-            series = pd.Series(ics)
-            overlap = max(1, int(np.ceil(horizon / step)))
-            ir = float(series.mean() / series.std(ddof=1)) if len(series) > 1 and series.std(ddof=1) > 0 else np.nan
-            t_stat = ir * np.sqrt(len(series)) if np.isfinite(ir) else np.nan
-            rows.append(
-                {
-                    "factor": name,
-                    "horizon": horizon,
-                    "periods": len(series),
-                    "ic_mean": float(series.mean()),
-                    "ic_std": float(series.std(ddof=1)) if len(series) > 1 else np.nan,
-                    "ic_ir": ir,
-                    "t_stat_adj": t_stat / np.sqrt(overlap) if np.isfinite(t_stat) else np.nan,
-                    "positive_rate": float((series > 0).mean()),
-                }
-            )
-    table = pd.DataFrame(rows)
-    if table.empty:
-        print("没有可评估的截面")
-        return 1
-
-    # 按 |IC| 排序，最"有信息"的因子排前面（正负都算）
-    table["abs_ic"] = table["ic_mean"].abs()
-    table = table.sort_values(["abs_ic", "factor"], ascending=[False, True]).drop(columns="abs_ic")
-    view = table.copy()
-    for column in ("ic_mean", "ic_std", "ic_ir", "t_stat_adj"):
+    full = outcome["full_significance"]
+    # 主表 table 上已挂全样本校正列（p_value / q_bh / significant_*），展示用主表；
+    # full_significance["table"] 只有校正相关的列，缺 ic_mean 等。
+    full_table = table.copy()
+    full_table["abs_t"] = full_table["t_stat_adj"].abs()
+    full_table = full_table.sort_values("abs_t", ascending=False).drop(columns="abs_t")
+    view = full_table.copy()
+    for column in ("ic_mean", "ic_std", "ic_ir", "t_stat_adj", "q_bh"):
         view[column] = view[column].astype(float).round(4)
     view["positive_rate"] = (view["positive_rate"].astype(float) * 100).round(1)
     print()
-    print(markdown_table(view.rename(columns={
-        "factor": "因子", "horizon": "持有期", "periods": "截面数", "ic_mean": "平均IC",
-        "ic_std": "IC标准差", "ic_ir": "IC_IR", "t_stat_adj": "t值(重叠修正)", "positive_rate": "正IC占比%",
-    })))
+    print("## 全样本 IC（按 |t| 降序，前 15 个）")
+    print(markdown_table(
+        view.head(15).rename(columns={
+            "factor": "因子", "horizon": "持有期", "periods": "截面数", "ic_mean": "平均IC",
+            "ic_std": "IC标准差", "ic_ir": "IC_IR", "t_stat_adj": "t值(重叠修正)",
+            "q_bh": "q值(BH)", "positive_rate": "正IC占比%",
+        })[["因子", "持有期", "截面数", "平均IC", "IC_IR", "t值(重叠修正)", "q值(BH)", "正IC占比%"]]
+    ))
 
-    significant = table[table["t_stat_adj"].abs() > 2.0]
     print()
-    print(f"|t| > 2 的 (因子, 持有期) 组合：{len(significant)} / {len(table)}")
-    if not significant.empty:
-        print(markdown_table(significant.head(10).rename(columns={
-            "factor": "因子", "horizon": "持有期", "ic_mean": "平均IC", "t_stat_adj": "t值",
-        })[["因子", "持有期", "平均IC", "t值"]].round(4)))
+    print("## 多重比较校正")
+    print(markdown_table(pd.DataFrame([
+        {"口径": "不校正 (p ≤ 0.05)", "显著组合数": int(full_table["significant_raw"].sum())},
+        {"口径": "BH-FDR", "显著组合数": int(full_table["significant_bh"].sum())},
+        {"口径": "Bonferroni", "显著组合数": int(full_table["significant_bonferroni"].sum())},
+        {"口径": "期望假阳性（不校正）", "显著组合数": round(float(full["expected_false_positives"]), 2)},
+        {"口径": "检验总数", "显著组合数": len(full_table)},
+    ])))
+
+    if len(horizon_list) >= 1:
+        survivors = table[table["is_significant_bh"]]
+        print()
+        print(f"## 样本内挑选 → 样本外验证（样本内 BH 显著 {len(survivors)} 个组合）")
+        if survivors.empty:
+            print("样本内没有任何组合通过 BH 校正。")
+        else:
+            columns = ["factor", "horizon", "is_ic_mean", "is_t_stat_adj", "os_ic_mean", "os_t_stat_adj",
+                       "os_significant", "survives_oos"]
+            view2 = survivors[columns].copy().sort_values("is_t_stat_adj", ascending=False)
+            for column in ("is_ic_mean", "is_t_stat_adj", "os_ic_mean", "os_t_stat_adj"):
+                view2[column] = view2[column].astype(float).round(4)
+            print(markdown_table(view2.rename(columns={
+                "factor": "因子", "horizon": "持有期", "is_ic_mean": "样本内IC", "is_t_stat_adj": "样本内t",
+                "os_ic_mean": "样本外IC", "os_t_stat_adj": "样本外t", "os_significant": "样本外显著",
+                "survives_oos": "存活",
+            })))
+            survived = int(survivors["survives_oos"].sum())
+            print()
+            print(f"**样本外仍显著且同向：{survived} / {len(survivors)}**"
+                  f"（样本外反向 {int((~survivors['os_same_sign']).sum())} 个）")
 
     if args.out:
         out = Path(args.out) / "alpha101_ic"
         out.mkdir(parents=True, exist_ok=True)
-        table.to_csv(out / "alpha101_ic.csv", index=False, encoding="utf-8-sig")
+        full_table.to_csv(out / "alpha101_corrected.csv", index=False, encoding="utf-8-sig")
+        table.to_csv(out / "alpha101_is_oos.csv", index=False, encoding="utf-8-sig")
         (out / "skipped.txt").write_text(
             "\n".join(f"{name}: {reason}" for name, reason in sorted(SKIPPED.items())), encoding="utf-8"
         )
         write_html_report(
             out / "report.html",
-            title="Alpha101 subset - factor IC",
+            title="Alpha101 subset - IC with multiple-comparison control",
             summary=view.head(30),
             meta={
                 "symbols": len(panel.symbols),
                 "days": len(panel.dates),
-                "factors": len(values),
+                "factors": int(table["factor"].nunique()),
                 "skipped": len(SKIPPED),
-                "horizons": ",".join(str(h) for h in horizons),
-                "step_days": step,
+                "horizons": ",".join(str(h) for h in horizon_list),
+                "step_days": config.step_days,
+                "alpha": config.alpha,
+                "in_sample_fraction": config.is_fraction,
+                "significant_raw": int(full_table["significant_raw"].sum()),
+                "significant_bh": int(full_table["significant_bh"].sum()),
+                "significant_bonferroni": int(full_table["significant_bonferroni"].sum()),
             },
-            notes="Self-implemented formulas (no third-party code); IC = per-date Spearman rank correlation.",
+            notes="Self-implemented formulas; IC = per-date Spearman rank correlation; "
+                  "p-values use a normal approximation and are corrected with Bonferroni / Benjamini-Hochberg.",
         )
         print(f"\n结果已写入：{out}")
     return 0
@@ -1691,6 +1695,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_fic.add_argument("--forward", type=int, default=20, help="forward return horizon in trading days")
     p_fic.add_argument("--horizons", default=None, help="comma list, e.g. 1,3,5,10,20 -> adds an IC term structure")
     p_fic.add_argument("--alpha101", action="store_true", help="evaluate the self-implemented Alpha101 subset instead of the built-in five factors")
+    p_fic.add_argument("--alpha", type=float, default=0.05, help="significance level for the multiple-comparison correction")
+    p_fic.add_argument("--is-fraction", type=float, default=0.5, help="in-sample fraction of the time axis for the out-of-sample check")
     p_fic.add_argument("--step", type=int, default=5, help="trading days between cross-sections")
     p_fic.add_argument("--min-history", type=int, default=130)
     p_fic.add_argument("--min-symbols", type=int, default=8)
