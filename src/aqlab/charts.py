@@ -17,7 +17,7 @@ import pandas as pd
 
 from aqlab.metrics import drawdown_series
 
-__all__ = ["plot_drawdown", "plot_equity_curves", "plot_strategy_comparison"]
+__all__ = ["monthly_return_matrix", "plot_drawdown", "plot_equity_curves", "plot_monthly_heatmap", "plot_strategy_comparison"]
 
 
 def _pyplot():
@@ -111,6 +111,53 @@ def plot_strategy_comparison(
         axis.axhline(0, color="#444444", linewidth=0.8)
         axis.grid(alpha=0.2, axis="y")
     figure.suptitle(title, fontsize=10)
+    figure.tight_layout()
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, bbox_inches="tight")
+    plt.close(figure)
+    return target
+
+
+def monthly_return_matrix(equity: pd.Series) -> pd.DataFrame:
+    """把净值序列折成 **年 × 月** 的收益矩阵（单位 %）。
+
+    第一个月相对序列起始值计算，避免把"建仓前"的零点当成一个月。
+    """
+    series = pd.Series(equity).astype(float).sort_index()
+    if len(series) < 2:
+        raise ValueError("equity series needs at least two points")
+    month_end = series.resample("ME").last()
+    base = pd.Series([series.iloc[0]], index=pd.DatetimeIndex([series.index[0] - pd.Timedelta(days=1)]))
+    returns = pd.concat([base, month_end]).pct_change().dropna()
+    frame = pd.DataFrame({"year": returns.index.year, "month": returns.index.month, "ret": returns.to_numpy()})
+    matrix = frame.pivot(index="year", columns="month", values="ret") * 100.0
+    return matrix.reindex(columns=range(1, 13))
+
+
+def plot_monthly_heatmap(matrix: pd.DataFrame, path: str | Path, title: str = "Monthly returns (%)") -> Path:
+    """月度收益热力图（红绿对称色标，中心为 0）。"""
+    plt = _pyplot()
+    if matrix is None or matrix.empty:
+        raise ValueError("monthly matrix is empty")
+    values = matrix.to_numpy(dtype=float)
+    limit = float(np.nanmax(np.abs(values))) if np.isfinite(values).any() else 1.0
+    limit = limit if limit > 0 else 1.0
+    height = max(1.8, 0.5 * len(matrix) + 1.4)
+    figure, axis = plt.subplots(figsize=(9.2, height), dpi=140)
+    image = axis.imshow(values, cmap="RdYlGn", vmin=-limit, vmax=limit, aspect="auto")
+    axis.set_xticks(range(len(matrix.columns)))
+    axis.set_xticklabels([f"{month:02d}" for month in matrix.columns], fontsize=8)
+    axis.set_yticks(range(len(matrix.index)))
+    axis.set_yticklabels([str(year) for year in matrix.index], fontsize=8)
+    axis.set_xlabel("month", fontsize=8)
+    for row in range(values.shape[0]):
+        for column in range(values.shape[1]):
+            value = values[row, column]
+            if np.isfinite(value):
+                axis.text(column, row, f"{value:.1f}", ha="center", va="center", fontsize=7, color="#222222")
+    figure.colorbar(image, ax=axis, shrink=0.85, label="return (%)")
+    axis.set_title(title)
     figure.tight_layout()
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

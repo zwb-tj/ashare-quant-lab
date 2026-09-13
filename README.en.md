@@ -1,4 +1,4 @@
-# A-Share Quant Lab (`aqlab`)
+﻿# A-Share Quant Lab (`aqlab`)
 
 [![ci](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml)
 
@@ -16,6 +16,7 @@
 - **Structural exit rules are measured as a negative contribution**: expected excess -0.13 ~ -0.17 (t=-4.6 ~ -6.3) while compressing average holding from 10~20 days to 3~5 days; only a -7% intraday stop cuts the left tail (worst trade -10.4% vs -22.5%).
 - **Reproducibility by construction**: deterministic synthetic bars from fixed seeds, so `pytest` and the demo produce identical output on any machine, with an end-to-end demo that completes in three minutes.
 - **A small dependency surface**: runtime dependencies are numpy + pandas only; the toolkit is a clean-room original implementation under MIT, with zero third-party strategy code.
+- **Visualisation and reporting**: one `aqlab plot` call emits equity, drawdown, strategy-comparison and monthly-return charts plus an **offline self-contained HTML report** (base64 images, zero external references, no JavaScript); matplotlib is an optional extra with a clear degradation message.
 - **The agent layer is evaluated, not asserted**: 6 read-only JSON-Schema tools behind a bounded plan-act-observe loop with a full-step trace, scoring grounded number rate 0.900, abstain accuracy 1.000 and regression consistency 1.000 on the 5-task offline suite.
 
 All commands, flags, file paths and numeric values below are reproduced verbatim from the source document; captured console output keeps its original numbers, with Chinese labels rendered in English for readability.
@@ -101,6 +102,13 @@ python -m aqlab.cli agent --question "用 ma_cross(10,30) 回测 SYN001，给我
 ![Equity curves](docs/assets/equity_curves.png)
 
 ![Strategy comparison](docs/assets/strategy_comparison.png)
+
+![Monthly return heatmap](docs/assets/monthly_heatmap.png)
+
+> The same command also writes **`charts/report.html`**: an **offline, self-contained** report
+> (images embedded as base64, styles inlined, no external reference and no JavaScript), whose header
+> records the sample period, the cost parameters and the generation time. It opens offline, travels
+> well when shared, and never breaks because a linked asset went away.
 
 **How to read these two tables**
 
@@ -684,7 +692,7 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
 - ✅ **v0.14** Static analysis in CI: `ruff` (a pinned, deliberately not "ALL" rule set, currently clean) and `mypy` (32 source files, no errors) are merge gates, which surfaced and fixed implicit union types, a datasource reassignment, and two stale `type: ignore` comments.
 - ✅ **v0.13** Presentation surface: CLI end-to-end tests raise statement coverage from 74% to 89%, CI coverage gate at >=85%, an English README, and a case study including the rejected hypotheses.
-- ✅ **v0.9** Visualisation: equity / drawdown / strategy-comparison charts (`aqlab plot`; matplotlib is an optional extra, and the images above are produced by that command).
+- ✅ **v0.9** Visualisation and reporting: equity / drawdown / strategy-comparison / **monthly-return heatmap** charts plus a **self-contained offline HTML report** (`aqlab plot`; matplotlib is an optional extra, and the images above are produced by that command).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details.
 

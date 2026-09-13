@@ -6,6 +6,7 @@ matplotlib 是可选依赖，所以：**装了就把图真画出来并校验是�
 
 import struct
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -15,7 +16,13 @@ from aqlab.metrics import compute_metrics
 
 matplotlib = pytest.importorskip("matplotlib", reason="charts need the optional 'plot' extra")
 
-from aqlab.charts import plot_drawdown, plot_equity_curves, plot_strategy_comparison
+from aqlab.charts import (
+    monthly_return_matrix,
+    plot_drawdown,
+    plot_equity_curves,
+    plot_monthly_heatmap,
+    plot_strategy_comparison,
+)
 
 
 def png_size(path):
@@ -76,3 +83,53 @@ def test_comparison_rejects_unknown_metric_columns(tmp_path):
     summary = pd.DataFrame([{"strategy": "x", "unrelated": 1.0}])
     with pytest.raises(ValueError):
         plot_strategy_comparison(summary, tmp_path / "x.png")
+
+
+# --------------------------------------------------------------------------------------
+# 月度热力图与自包含 HTML 报告
+# --------------------------------------------------------------------------------------
+def test_monthly_return_matrix_is_year_by_month_percent():
+    # 起点取在月中：这样 1 月的收益才是"起点 -> 1 月末"，而不是恒为 0
+    index = pd.to_datetime(["2024-01-15", "2024-01-31", "2024-02-29", "2024-03-29"])
+    equity = pd.Series([100.0, 110.0, 99.0, 108.9], index=index)
+    matrix = monthly_return_matrix(equity)
+    assert matrix.loc[2024, 1] == pytest.approx(10.0)          # 100 -> 110
+    assert matrix.loc[2024, 2] == pytest.approx(-10.0)         # 110 -> 99
+    assert matrix.loc[2024, 3] == pytest.approx(10.0)          # 99 -> 108.9
+    assert list(matrix.columns) == list(range(1, 13))
+    assert np.isnan(matrix.loc[2024, 12])                      # 没数据的月份留空，不填 0
+    with pytest.raises(ValueError):
+        monthly_return_matrix(pd.Series([100.0], index=index[:1]))
+
+
+def test_monthly_heatmap_renders(tmp_path):
+    index = pd.to_datetime(["2024-01-31", "2024-02-29", "2024-03-29"])
+    matrix = monthly_return_matrix(pd.Series([100.0, 105.0, 101.0], index=index))
+    path = plot_monthly_heatmap(matrix, tmp_path / "heat.png")
+    assert path.exists() and png_size(path)[0] > 500
+    with pytest.raises(ValueError):
+        plot_monthly_heatmap(pd.DataFrame(), tmp_path / "empty.png")
+
+
+def test_html_report_is_self_contained(tmp_path, results):
+    from aqlab.report_html import render_html, write_html_report
+
+    _df, result, _metrics = next(iter(results.values()))
+    chart = plot_drawdown(result.frame, tmp_path / "dd.png")
+    summary = pd.DataFrame([{"strategy": "ma_cross", "total_return": 0.12, "sharpe": 0.8}])
+    path = write_html_report(
+        tmp_path / "report.html",
+        title="Demo report",
+        summary=summary,
+        images=[chart],
+        meta={"bars": 320, "period": "2022-01-03 ~ 2023-04-01"},
+        notes="self-contained",
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "data:image/png;base64," in text                    # 图片内嵌
+    assert "ma_cross" in text and "0.12" in text               # 指标进了表
+    assert "2022-01-03 ~ 2023-04-01" in text                   # 元信息可复核
+    for external in ("http://", "https://", "<script"):
+        assert external not in text, f"报告不该出现外部依赖：{external}"
+    assert "no rows" in render_html("t", pd.DataFrame(), images=[])
+

@@ -21,6 +21,7 @@
 | **可证伪的研究结论** | 有 **5 条假设被自己的数据否决**并写进文档：选股规则 334 条记录超额 -0.40 ~ -4.23%（t=-2.25 ~ -5.58，24 格中 13 格显著为负）；"高量比+开盘上冲"在 21 个月长样本上反转（-0.53% → +0.21%）；结构离场把持有期从 10~20 天压到 3~5 天、超额从 ≈0 变成 -0.13 ~ -0.17；白线破位单条规则占 57% 的交易且平均 -1.55% |
 | **工程实践** | 无未来函数（信号统一延迟一根 K 线，并有专门断言它的测试）｜显式手续费/滑点/份额记账/换手约束｜确定性合成数据 + 固定种子，输出可逐字节复现｜CLI **18 个子命令**，其中 **11 个由端到端测试**真跑（含中文列名 CSV、全市场研究、量比确认） |
 | **LLM / Agent 层** | 只读工具层 + 有界代理循环 + 全步骤 trace + 可靠性评测（工具落地率 / 幻觉率 / 弃答率），并有"代理说的每个数字必须来自工具"的约束 |
+| **可视化与报告** | `aqlab plot` 一条命令产出净值 / 回撤 / 策略对比 / 月度收益热力图，外加**离线自包含 HTML 报告**（base64 内嵌图片、零外部引用、无 JS）；matplotlib 为可选依赖，未安装时降级为明确提示 |
 | **文档** | 中文 README + [English README](README.en.md) + [案例研究（研究闭环与负面结果）](docs/CASE_STUDY.md) + [架构说明](docs/ARCHITECTURE.md) + [路线图](docs/ROADMAP.md) |
 
 **技术栈**：Python 3.10+ ｜ numpy / pandas（核心零第三方策略依赖）｜ pytest + pytest-cov ｜ GitHub Actions ｜ 本地 LevelDB 行情库（C++ 引擎 + Python SDK）｜ 可选：tushare / akshare / matplotlib
@@ -97,11 +98,17 @@ python -m aqlab.cli agent --question "用 ma_cross(10,30) 回测 SYN001，给我
 | momentum | -10.98 | -3.83 | 9.14 | -0.382 | -19.76 | 155 | 40.65 |
 | mean_reversion | -45.53 | -18.46 | 19.00 | -0.979 | -53.88 | 30 | 50.00 |
 
-**净值 / 回撤 / 策略对比（`aqlab plot`，同一份合成行情、含手续费与滑点）**
+**净值 / 回撤 / 策略对比 / 月度热力图（`aqlab plot`，同一份合成行情、含手续费与滑点）**
 
 ![净值曲线](docs/assets/equity_curves.png)
 
 ![策略指标对比](docs/assets/strategy_comparison.png)
+
+![月度收益热力图](docs/assets/monthly_heatmap.png)
+
+> 同一条命令还会输出 **`charts/report.html`**：一个**离线自包含**报告（图片 base64 内嵌、样式内联、
+> 零外部引用、无 JS 依赖），头部固定写下样本区间、成本参数与生成时间。断网可看、拷给别人也能看，
+> 也不会因为外链失效而变形。
 
 **怎么读这两张表（这也是面试里最值得讲的一点）**
 
@@ -683,7 +690,7 @@ python scripts/opening_filter_study.py                       # 决策日开盘 0
 - ✅ **v0.12** 长样本复核：21 个月分层抽样（13,492 笔）+ 开盘特征样本外检验（结论：开盘形态边际不稳定，0AMV 阶段与持有期才稳定）。
 - ✅ **v0.14** 静态检查接入 CI：`ruff`（钉死规则集、零违规）与 `mypy`（32 个源文件零错误）成为合并门禁；顺带修掉 `params` 隐式联合类型、数据源变量重赋值、两处多余的 `type: ignore`。
 - ✅ **v0.13** 面向展示的工程面：CLI 端到端测试把覆盖率从 74% 提到 89%、CI 覆盖率门禁 ≥85%、English README、案例研究（含被否决的假设）。
-- ✅ **v0.9** 可视化：净值/回撤/策略指标对比图（`aqlab plot`，matplotlib 为可选依赖，README 中的图由该命令生成）。
+- ✅ **v0.9** 可视化与报告：净值/回撤/策略指标对比/**月度收益热力图** + **离线自包含 HTML 报告**（`aqlab plot`；matplotlib 为可选依赖，README 中的图由该命令生成）。
 
 
 详见 [`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

@@ -894,10 +894,17 @@ def _regime_lookup(gate, frames, date):
 
 
 def cmd_plot(args: argparse.Namespace) -> int:
-    """把回测结果画成图：净值曲线、回撤、策略指标对比（可选依赖 matplotlib）。"""
+    """把回测结果画成图 + 生成自包含 HTML 报告（matplotlib 是可选依赖）。"""
     import pandas as pd
 
-    from aqlab.charts import plot_drawdown, plot_equity_curves, plot_strategy_comparison
+    from aqlab.charts import (
+        monthly_return_matrix,
+        plot_drawdown,
+        plot_equity_curves,
+        plot_monthly_heatmap,
+        plot_strategy_comparison,
+    )
+    from aqlab.report_html import write_html_report
 
     if args.csv:
         from aqlab.data import load_ohlcv_csv
@@ -925,11 +932,30 @@ def cmd_plot(args: argparse.Namespace) -> int:
 
     benchmark = (df["close"] / df["close"].iloc[0]) * config.initial_cash
     out = Path(args.out) / "charts"
+    first = curves[names[0]]
     written = [
         plot_equity_curves(curves, out / "equity_curves.png", title=args.title, benchmark=benchmark),
-        plot_drawdown(curves[names[0]], out / "drawdown.png", title=f"Drawdown - {names[0]}"),
+        plot_drawdown(first, out / "drawdown.png", title=f"Drawdown - {names[0]}"),
         plot_strategy_comparison(pd.DataFrame(summary), out / "strategy_comparison.png", title=args.title),
+        plot_monthly_heatmap(monthly_return_matrix(first["equity"]), out / "monthly_heatmap.png",
+                             title=f"Monthly returns (%) - {names[0]}"),
     ]
+    report = write_html_report(
+        out / "report.html",
+        title=args.title,
+        summary=pd.DataFrame(summary).round(4),
+        images=written,
+        meta={
+            "symbols": ",".join(names),
+            "bars": len(df),
+            "period": f"{df.index[0].date()} ~ {df.index[-1].date()}",
+            "fee_bps": args.fee_bps,
+            "slippage_bps": args.slippage_bps,
+            "source": args.csv or f"synthetic(seed={args.seed})",
+        },
+        notes="Self-contained: images are embedded as base64 and no external asset is referenced.",
+    )
+    written.append(report)
     for path in written:
         print(f"图已写入：{path}")
     return 0
