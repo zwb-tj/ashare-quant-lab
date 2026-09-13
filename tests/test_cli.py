@@ -111,3 +111,11 @@ def test_picks_backtest_requires_archive_dir(tmp_path):
 def test_unknown_command_exits_with_error():
     with pytest.raises(SystemExit):
         main(["definitely-not-a-command"])
+
+def test_plot_renders_charts_when_matplotlib_is_available(tmp_path):
+    """绘图子命令：装了 matplotlib 就真出图；没装则跳过（CI 不强制绘图依赖）。"""
+    import pytest as _pytest
+
+    _pytest.importorskip("matplotlib", reason="charts need the optional 'plot' extra")
+    assert main(["plot", "--seed", "25", "--days", "300", "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "charts" / "equity_curves.png").exists()

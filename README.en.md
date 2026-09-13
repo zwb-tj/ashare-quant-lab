@@ -1,4 +1,4 @@
-# A-Share Quant Lab (`aqlab`)
+﻿# A-Share Quant Lab (`aqlab`)
 
 [![ci](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/zwb-tj/ashare-quant-lab/actions/workflows/ci.yml)
 
@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **282 pytest cases** across 28 test modules run fully offline — no network and no API key — with **89% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite).
+- **288 pytest cases** across 28 test modules run fully offline — no network and no API key — with **89% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -95,6 +95,12 @@ python -m aqlab.cli agent --question "用 ma_cross(10,30) 回测 SYN001，给我
 | ma_cross | -21.35 | -7.75 | 15.39 | -0.447 | -37.28 | 13 | 23.08 |
 | momentum | -10.98 | -3.83 | 9.14 | -0.382 | -19.76 | 155 | 40.65 |
 | mean_reversion | -45.53 | -18.46 | 19.00 | -0.979 | -53.88 | 30 | 50.00 |
+
+**Equity, drawdown and strategy comparison (`aqlab plot`, same synthetic bars, fees and slippage included)**
+
+![Equity curves](docs/assets/equity_curves.png)
+
+![Strategy comparison](docs/assets/strategy_comparison.png)
 
 **How to read these two tables**
 
@@ -675,8 +681,9 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.8** Opening volume-ratio confirmation: 7-minute volume-ratio gate + decision table + causality test (`aqlab decide`), with the synthetic-data boundary written down.
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
-- **v0.12** Long-sample review: 21-month stratified sampling + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
-- **v0.9** Visual reports: net value / drawdown / factor contribution charts.
+- ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.13** Presentation surface: CLI end-to-end tests raise statement coverage from 74% to 89%, CI coverage gate at >=85%, an English README, and a case study including the rejected hypotheses.
+- ✅ **v0.9** Visualisation: equity / drawdown / strategy-comparison charts (`aqlab plot`; matplotlib is an optional extra, and the images above are produced by that command).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for details.
 

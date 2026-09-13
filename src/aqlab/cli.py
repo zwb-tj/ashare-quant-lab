@@ -889,6 +889,48 @@ def _regime_lookup(gate, frames, date):
     return series.get(stamp, 0)
 
 
+def cmd_plot(args: argparse.Namespace) -> int:
+    """把回测结果画成图：净值曲线、回撤、策略指标对比（可选依赖 matplotlib）。"""
+    import pandas as pd
+
+    from aqlab.charts import plot_drawdown, plot_equity_curves, plot_strategy_comparison
+
+    if args.csv:
+        from aqlab.data import load_ohlcv_csv
+
+        df = load_ohlcv_csv(args.csv)
+    else:
+        df = generate_synthetic_ohlcv(n_days=args.days, seed=args.seed)
+
+    config = BacktestConfig(fee_bps=args.fee_bps, slippage_bps=args.slippage_bps)
+    default_names = ["buy_and_hold", "ma_cross", "momentum", "mean_reversion"]
+    names = [item.strip() for item in args.strategies.split(",") if item.strip()] if args.strategies else default_names
+    curves: dict[str, pd.DataFrame] = {}
+    summary: list[dict] = []
+    for name in names:
+        strategy = build_strategy(name)
+        result = run_backtest(df, strategy.positions(df), config=config, name=strategy.name)
+        metrics = compute_metrics(result.frame, initial_cash=config.initial_cash, trades=result.trades)
+        curves[strategy.name] = result.frame
+        summary.append(
+            {
+                "strategy": strategy.name,
+                **{key: metrics.get(key) for key in ("total_return", "sharpe", "max_drawdown", "win_rate_trade")},
+            }
+        )
+
+    benchmark = (df["close"] / df["close"].iloc[0]) * config.initial_cash
+    out = Path(args.out) / "charts"
+    written = [
+        plot_equity_curves(curves, out / "equity_curves.png", title=args.title, benchmark=benchmark),
+        plot_drawdown(curves[names[0]], out / "drawdown.png", title=f"Drawdown - {names[0]}"),
+        plot_strategy_comparison(pd.DataFrame(summary), out / "strategy_comparison.png", title=args.title),
+    ]
+    for path in written:
+        print(f"图已写入：{path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1131,6 +1173,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_us.add_argument("--limit", type=int, default=None)
     p_us.add_argument("--out", default=str(DEFAULT_OUT))
     p_us.set_defaults(func=cmd_universe_study)
+    p_plot = sub.add_parser("plot", help="render equity/drawdown/comparison charts (needs the 'plot' extra)")
+    p_plot.add_argument("--csv", default=None, help="optional OHLCV CSV; default uses synthetic bars")
+    p_plot.add_argument("--strategies", default=None, help="comma list, default all four built-ins")
+    p_plot.add_argument("--days", type=int, default=500)
+    p_plot.add_argument("--seed", type=int, default=25)
+    p_plot.add_argument("--fee-bps", type=float, default=3.0)
+    p_plot.add_argument("--slippage-bps", type=float, default=2.0)
+    p_plot.add_argument("--title", default="Built-in strategies on the same synthetic bars")
+    p_plot.add_argument("--out", default=str(DEFAULT_OUT))
+    p_plot.set_defaults(func=cmd_plot)
     return parser
 
 

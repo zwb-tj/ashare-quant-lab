@@ -175,11 +175,43 @@
 - 测试：9 个新用例（窗口量、量比只用历史、三条决策分支、决策日晚于信号日、确认序列映射、合成分钟线守恒与确定性、参数校验），全套 **216** 个用例离线通过。
 - 诚实边界：合成分钟线全期统一放量 → 量比自我归一化 → **只能验证流程，不能验证有效性**。
 
-## v0.9 · 可视化报告
-- 净值 / 回撤 / 月度收益热力图 / 因子贡献分解
-- HTML 报告（离线自包含）
+## v0.9 · 可视化（✅ 已完成，2026-09）
+
+- `src/aqlab/charts.py`：`plot_equity_curves`（多策略净值 + 基准）、`plot_drawdown`（水下曲线）、`plot_strategy_comparison`（核心指标条形图）。matplotlib 为**可选依赖**（`pip install -e ".[plot]"`），未安装时给出可执行提示而不是 ImportError 崩塌；标签用英文，保证服务器/CI 无中文字体也能渲染。
+- CLI：`aqlab plot [--csv ...] [--strategies ...] [--seed 25]` → `charts/*.png`。
+- README / README.en.md 中的净值与对比图**由该命令生成**（`docs/assets/`），不是手绘。
+- 测试：5 个用例（两张图的有效 PNG 尺寸校验、缺列报错、未知指标列报错），matplotlib 缺失时整组跳过，CI 不因此变红。
+- 待办（未做）：月度收益热力图、因子贡献分解、离线自包含 HTML 报告。
+
+## v0.10 · 选股日志回测（✅ 已完成，2026-09）
+
+- `src/aqlab/picks.py`：读取 `picks_YYYY-MM-DD.json` 日志 → 同票去重 → 次日开盘入场 → 1/3/5/10 日收益；新增**同期等权篮子基准**（票池外标的、同入场日、同持有期），输出 `excess_*`，并把"发布日 ≠ 可买入日"写进报告表头。
+- CLI：`aqlab picks-backtest --archive ... [--confirm ...]`。
+- 关键修正：基准与超额只在**配对子集**（个股与篮子都有数据）上计算，保证 `均值 − 基准 = 超额` 自洽。
+
+## v0.11 · 全市场检验 + 离场规则（✅ 已完成，2026-09）
+
+- `src/aqlab/exits.py`：白线/黄线死叉（牵牛绳断）、白线连续破位、滴滴（全版：连续两根阴线 + 破昨低 + 量能不缩 + 不在深跌区）、entry_low 止损、盘中止损止盈（按触发价成交）、ATR 止损、最短持仓保护；优先级为"盘中止损止盈 → 收盘结构规则 → 收盘止损"。
+- `src/aqlab/study_universe.py`：全市场扫信号 → T+1 开盘入场 → 离场模拟 → 与全市场等权指数比超额，支持 0AMV 波段门（用"昨天收盘已知的状态"判定）。
+- `src/aqlab/intraday.py`：新增 `standard_volume_ratio`（**软件口径**量比，与行情软件一致）与 `opening_features`（开盘上冲/量能斜率/窗口位置）。
+- CLI：`aqlab universe-study`；脚本：`scripts/fetch_universe_daily.py`、`scripts/universe_compare.py`、`scripts/opening_filter_study.py`。
+- 实测规模：5,424 只标的、58,682 笔交易、2025-01 ~ 2026-09。
+
+## v0.12 · 长样本样本外复核（✅ 已完成，2026-09）
+
+- `scripts/fetch_long_minutes.py`（按月份分层抽样分钟数据）+ `scripts/opening_features_long.py`（21 个月、13,492 笔）。
+- 结论：短窗口看到的"开盘量能递增"优势从 +0.95pp 缩到 +0.16pp（超额 +0.08%，t=1.00），"量比越高越差"反转为 +0.21%（t=1.38）→ **开盘形态类结论必须样本外验证**；稳定的是 0AMV 波段与持有期。
+
+## v0.13 · 面向展示的工程面（✅ 已完成，2026-09）
+
+- `tests/test_cli.py`：11 个端到端测试真跑离线 CLI（含中文列名 CSV、全市场研究、量比确认），把语句覆盖率从 **74% 提到 89%**。
+- CI：`pytest --cov=aqlab --cov-fail-under=85`，Python 3.10 / 3.11 / 3.12 三版本矩阵。
+- 文档：[English README](../README.en.md)、[案例研究](../docs/CASE_STUDY.md)（研究闭环与负面结果）、README 顶部亮点表 + Mermaid 架构图 + 徽章。
+- 修正：README 的测试数从 216 更新为实测值；`pyproject.toml` 去掉误加的 UTF-8 BOM（会导致 `pip install -e` 解析失败）。
 
 ## 长期（工程化）
-- GitHub Actions：pytest + 类型检查 + 报告产物归档
-- 参数稳健性：walk-forward、参数敏感性矩阵
-- 把"选股 → 回测 → 复盘"固化为每日可跑的任务，并把每次产出归档
+- 类型检查（mypy）与 lint（ruff）接入 CI；报告产物归档为 artifact。
+- 参数稳健性：walk-forward、参数敏感性矩阵（部分已实现，见 v0.4.4 / v0.6）。
+- 把"选股 → 回测 → 复盘"固化为每日可跑的任务，并把每次产出归档。
+- 可视化待办：月度收益热力图、因子贡献分解、离线自包含 HTML 报告。
+

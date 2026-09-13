@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 data = ["tushare>=1.2", "akshare>=1.10"]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "matplotlib>=3.7"]
 
 [project.scripts]
 aqlab = "aqlab.cli:main"
