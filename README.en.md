@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **370 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **377 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -30,6 +30,11 @@
   failure here (6.6 names on average, -43% drawdown, -15.6% CAGR) because a 60-day expected-return estimate is
   mostly noise and the optimiser maximises that error; minimum variance keeps the lowest volatility and inverse
   volatility the best return. Annual turnover of 2,280-2,327% makes the cost line decisive.
+- **State dependence**: the IC of each factor is grouped by same-day market state (equal-weight index
+  momentum, cross-sectional dispersion, and the 0AMV band switch). Every one of the ten factors shows a
+  higher IC and t statistic in the closed band than in the open band (alpha_050: +0.063, t=7.94 versus +0.038,
+  t=3.90), while the hypothesis that high dispersion causes the fold-4 failure is rejected by the data - the
+  highest-dispersion bucket actually has the strongest IC. Fold 4 therefore remains mechanistically unexplained.
 - **Walk-forward folds**: the single 50/50 split is upgraded to rolling folds (expanding training windows,
   direction taken from the training segment only). 12 of 74 factor-horizon combinations are robust (selected
   in at least two folds and surviving in at least 60% of them), and the per-fold survival matrix shows that
@@ -749,6 +754,8 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.29** State-dependence analysis: the closed 0AMV band is consistently better for every factor, and
+  two plausible explanations for the fold-4 failure are rejected by the data.
 - ✅ **v0.28** Walk-forward fold validation: 12 robust combinations out of 74, with fold 4 (2026 Q2) failing
   across the board.
 - ✅ **v0.27** Cost check on the alpha portfolios (next-open entry, turnover-based costs, break-even cost);
