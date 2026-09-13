@@ -113,6 +113,15 @@ def build_steps(full: bool = False) -> list[Step]:
                 },
             ),
             Step(
+                name="alpha101-ic-real",
+                command=("factor-ic", "--alpha101", "--data-dir", "data/universe/daily",
+                         "--horizons", "1,5,20", "--step", "5", "--min-history", "260",
+                         "--min-symbols", "200", "--out", "OUT"),
+                outputs=("alpha101_ic/alpha101_ic.csv", "alpha101_ic/skipped.txt", "alpha101_ic/report.html"),
+                description="公式化因子（Alpha101 子集）真实全市场 IC",
+                needs_real_data=True,
+            ),
+            Step(
                 name="portfolio-methods-real",
                 command=("portfolio", "--data-dir", "data/universe/daily", "--profile", "b1",
                          "--method", "risk_parity", "--compare-methods", "--out", "OUT"),
