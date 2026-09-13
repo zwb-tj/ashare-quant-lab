@@ -113,6 +113,16 @@ def build_steps(full: bool = False) -> list[Step]:
                 },
             ),
             Step(
+                name="portfolio-methods-real",
+                command=("portfolio", "--data-dir", "data/universe/daily", "--profile", "b1",
+                         "--method", "risk_parity", "--compare-methods", "--out", "OUT"),
+                outputs=("portfolio/method_comparison.csv", "portfolio/method_comparison.png",
+                         "portfolio/portfolio.md"),
+                description="组合层：五种权重方法对比（真实全市场，约 23 分钟）",
+                needs_real_data=True,
+                assets={"portfolio/method_comparison.png": "portfolio_methods.png"},
+            ),
+            Step(
                 name="factor-schemes-real",
                 command=("factor-backtest", "--data-dir", "data/universe/daily", "--top-n", "10", "--forward", "20",
                          "--step", "5", "--lookback", "12", "--cost-bps", "20", "--min-symbols", "50", "--out", "OUT"),

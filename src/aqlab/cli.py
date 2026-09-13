@@ -411,8 +411,16 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
         exposure = exposure_report(result["rebalances"].iloc[-1]["weights"], universe, lookback=config.lookback)
     print(format_portfolio_report(result, exposure, config))
 
+    comparison = None
+    if args.compare_methods:
+        comparison = _compare_weight_methods(universe, signals, config, args)
+        print()
+        print(comparison["markdown"])
+
     if args.out:
         paths = write_portfolio_report(Path(args.out) / "portfolio", result, exposure, config)
+        if comparison is not None and comparison.get("table") is not None:
+            comparison["table"].to_csv(Path(args.out) / "portfolio" / "method_comparison.csv", index=False, encoding="utf-8-sig")
         print(f"\n报告已写入：{paths['markdown']}")
     return 0
 
@@ -1166,6 +1174,75 @@ def cmd_factor_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _compare_weight_methods(universe, signals, config, args) -> dict:
+    """同一信号集、同一约束下对比五种权重方法（净收益、回撤、换手、成本）。"""
+    import dataclasses
+
+    import pandas as pd
+
+    from aqlab.portfolio import simulate_portfolio
+    from aqlab.tables import markdown_table
+
+    methods = ("equal", "inverse_vol", "risk_parity", "min_variance", "mean_variance")
+    rows: list[dict] = []
+    curves: dict[str, pd.Series] = {}
+    for method in methods:
+        method_config = dataclasses.replace(config, method=method)
+        outcome = simulate_portfolio(universe, signals, method_config)
+        metrics = outcome.get("metrics") or {}
+        summary = outcome.get("summary") or {}
+        frame = outcome.get("frame")
+        if frame is not None and not frame.empty:
+            curves[method] = frame["equity"].astype(float)
+        rows.append(
+            {
+                "method": method,
+                "total_return": metrics.get("total_return"),
+                "cagr": metrics.get("cagr"),
+                "ann_vol": metrics.get("ann_vol"),
+                "sharpe": metrics.get("sharpe"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "annual_turnover": metrics.get("annual_turnover"),
+                "avg_positions": summary.get("avg_positions"),
+                "total_cost": summary.get("total_cost"),
+            }
+        )
+    table = pd.DataFrame(rows)
+    view = table.copy()
+    # 这四个是"比例"，统一乘 100 显示成百分数（annual_turnover 同理：22.85 -> 2284.8%）
+    for column in ("total_return", "cagr", "ann_vol", "max_drawdown", "annual_turnover", "total_cost"):
+        view[column] = (view[column].astype(float) * 100).round(2)
+    view["sharpe"] = view["sharpe"].astype(float).round(3)
+    view["avg_positions"] = view["avg_positions"].astype(float).round(1)
+    chart = None
+    if args.out and curves:
+        try:
+            from aqlab.charts import plot_scheme_curves
+
+            chart = plot_scheme_curves(
+                curves,
+                Path(args.out) / "portfolio" / "method_comparison.png",
+                title="Portfolio weight methods on the same signals (net of costs)",
+            )
+        except RuntimeError:
+            chart = None
+    degenerate = table[["total_return", "ann_vol", "max_drawdown", "avg_positions"]].round(10).drop_duplicates()
+    note = ""
+    if len(table) > 1 and len(degenerate) == 1:
+        note = (
+            "\n> ⚠️ 五种权重方法给出**完全相同**的结果：平均持仓 "
+            f"{float(table['avg_positions'].iloc[0]):.2f} 只时权重方法退化为同一组合，"
+            "这种对比没有信息量（先让信号层选出足够多的标的）。\n"
+        )
+    if chart is not None:
+        note += f"\n> 对比图：`{chart}`\n"
+    return {"table": table, "curves": curves, "markdown": "## 权重方法对比（同一信号集）\n\n" + markdown_table(view.rename(columns={
+        "method": "方法", "total_return": "总收益%", "cagr": "年化%", "ann_vol": "年化波动%",
+        "sharpe": "Sharpe", "max_drawdown": "最大回撤%", "annual_turnover": "年换手%",
+        "avg_positions": "平均持仓", "total_cost": "累计成本%",
+    })) + note}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1292,6 +1369,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pf.add_argument("--turnover-limit", type=float, default=0.30)
     p_pf.add_argument("--cost-bps", type=float, default=5.0)
     p_pf.add_argument("--min-history", type=int, default=120)
+    p_pf.add_argument("--compare-methods", action="store_true", help="also compare all five weighting methods under the same signals and constraints")
     p_pf.add_argument("--out", default=str(DEFAULT_OUT))
     p_pf.set_defaults(func=cmd_portfolio)
 
