@@ -215,6 +215,12 @@
 - 发现的可用性质：matplotlib 输出是**确定性**的，两次运行 PNG 字节相同，因此「图与代码一致」可以用哈希证明。
 - `tests/test_reproduce.py`：清单自洽、校验逻辑能识别差异与缺失、README 里每张嵌入图都必须有复现步骤。
 
+## v0.22 · 复现校验制度化（✅ 已完成，2026-09）
+
+- CI 在 Python 3.12 上执行 `python scripts/reproduce_all.py --verify`（合成档约 35 秒），把「README 的图必须能由当前代码复现」变成常规门禁。
+- 分级校验：默认要求图片**尺寸**一致（跨平台稳定），像素不同只报告；`--strict` 在本机要求逐字节一致。
+- 退出码策略抽成 `summarize_verification` 并被测试直接覆盖（match / differs-pixels / DIFFERS / 缺失 四种情形）。
+
 ## 长期（工程化）
 - 类型检查（mypy）与 lint（ruff）接入 CI；报告产物归档为 artifact。
 - 参数稳健性：walk-forward、参数敏感性矩阵（部分已实现，见 v0.4.4 / v0.6）。

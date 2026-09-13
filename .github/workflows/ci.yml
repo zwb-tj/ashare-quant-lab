@@ -40,6 +40,10 @@ jobs:
         if: matrix.python-version == '3.12'
         run: pytest -q --cov=aqlab --cov-report=term --cov-fail-under=85
 
+      - name: Reproduce every README figure and verify it against the committed assets
+        if: matrix.python-version == '3.12'
+        run: python scripts/reproduce_all.py --verify
+
       - name: Smoke test the CLI (offline demo)
         run: |
           python -m aqlab.cli demo --seed 25 --out /tmp/aqlab_out

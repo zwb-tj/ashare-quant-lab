@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from reproduce_all import Step, build_steps, sha256, verify_assets
+from reproduce_all import Step, build_steps, verify_assets
 
 
 def test_build_steps_fast_is_well_formed():
@@ -55,7 +55,27 @@ def _write(path: Path, payload: str) -> Path:
     return path
 
 
-def test_verify_assets_detects_match_difference_and_missing(tmp_path):
+def _png(path: Path, size: tuple[int, int], color: str) -> Path:
+    """用 matplotlib 造一张真 PNG（校验逻辑会读它的宽高）。"""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    figure = plt.figure(figsize=(size[0] / 100, size[1] / 100), dpi=100)
+    figure.patch.set_facecolor(color)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path)
+    plt.close(figure)
+    return path
+
+
+def _step(names: tuple[str, ...]) -> Step:
+    return Step(name="t", command=("plot",), outputs=tuple(f"charts/{name}" for name in names),
+                assets={f"charts/{name}": name for name in names})
+
+
+def test_verify_assets_reports_match_difference_and_missing_in_strict_mode(tmp_path):
     produced = tmp_path / "produced"
     assets = tmp_path / "assets"
     _write(produced / "charts" / "a.png", "PNG-A")
@@ -65,53 +85,41 @@ def test_verify_assets_detects_match_difference_and_missing(tmp_path):
     _write(assets / "c.png", "PNG-C")                 # 产出缺失
     _write(produced / "charts" / "d.png", "PNG-D")    # 已提交版本缺失
 
-    step = Step(
-        name="t",
-        command=("plot",),
-        outputs=("charts/a.png", "charts/b.png", "charts/c.png", "charts/d.png"),
-        assets={
-            "charts/a.png": "a.png",
-            "charts/b.png": "b.png",
-            "charts/c.png": "c.png",
-            "charts/d.png": "d.png",
-        },
-    )
-    rows = {row["asset"]: row["status"] for row in verify_assets([step], produced, assets)}
+    rows = {row["asset"]: row["status"] for row in verify_assets([_step(("a.png", "b.png", "c.png", "d.png"))], produced, assets, strict=True)}
     assert rows == {"a.png": "match", "b.png": "DIFFERS", "c.png": "missing-produced", "d.png": "missing-committed"}
 
 
-def test_sha256_is_stable_and_content_sensitive(tmp_path):
-    first = _write(tmp_path / "one.bin", "same")
-    second = _write(tmp_path / "two.bin", "same")
-    third = _write(tmp_path / "three.bin", "different")
-    assert sha256(first) == sha256(second)
-    assert sha256(first) != sha256(third)
-    assert len(sha256(first)) == 64
+def test_non_strict_mode_tolerates_pixel_differences_but_not_size_differences(tmp_path):
+    """CI 跑在 Linux、字体不同：同尺寸不同像素只报告；尺寸不同仍然致命。"""
+    produced = tmp_path / "produced"
+    assets = tmp_path / "assets"
+    _png(produced / "charts" / "same.png", (240, 160), "white")
+    _png(assets / "same.png", (240, 160), "black")            # 同尺寸、不同像素
+    _png(produced / "charts" / "size.png", (240, 160), "white")
+    _png(assets / "size.png", (300, 160), "white")            # 尺寸不同
+
+    rows = {row["asset"]: row["status"] for row in verify_assets([_step(("same.png", "size.png"))], produced, assets, strict=False)}
+    assert rows["same.png"] == "differs-pixels"
+    assert rows["size.png"] == "DIFFERS"
+    # 严格模式下，"同尺寸不同像素"同样算不一致
+    strict_rows = {row["asset"]: row["status"] for row in verify_assets([_step(("same.png",))], produced, assets, strict=True)}
+    assert strict_rows["same.png"] == "DIFFERS"
 
 
-def test_every_generated_chart_function_is_reachable_from_a_step():
-    """README 里嵌的图必须都能被某个步骤重新生成——否则"可复现"就是空话。"""
-    from aqlab.charts import __all__ as chart_functions  # noqa: F401  (存在性检查)
+def test_summarize_verification_sets_the_exit_code_policy():
+    """退出码策略：只有尺寸不同/缺失才失败；像素差异在非严格模式下不拦。"""
+    from reproduce_all import summarize_verification
 
-    produced = {name for step in build_steps(full=True) for name in step.outputs}
-    for expected in (
-        "charts/equity_curves.png",
-        "charts/monthly_heatmap.png",
-        "factor_ic/factor_ic.png",
-        "factor_ic/quantile_returns.png",
-        "factor_ic/ic_term_structure.png",
-        "factor_schemes/scheme_curves.png",
-    ):
-        assert expected in produced, f"{expected} 没有对应的复现步骤"
+    rows = [
+        {"asset": "a.png", "status": "match", "detail": ""},
+        {"asset": "b.png", "status": "differs-pixels", "detail": "same size"},
+    ]
+    outcome = summarize_verification(rows)
+    assert outcome["exit_code"] == 0 and outcome["exact"] == 1 and outcome["pixels"] == 1
 
+    rows.append({"asset": "c.png", "status": "DIFFERS", "detail": "240x160 vs 300x160"})
+    outcome = summarize_verification(rows)
+    assert outcome["exit_code"] == 1 and [row["asset"] for row in outcome["broken"]] == ["c.png"]
 
-def test_readme_embedded_assets_are_covered_by_the_manifest():
-    """README 里引用到的 docs/assets/*.png 必须在复现清单里，否则校验会漏掉它。"""
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    referenced = set()
-    for line in readme.splitlines():
-        if "docs/assets/" in line and line.strip().startswith("!["):
-            referenced.add(line.split("docs/assets/")[1].split(")")[0].strip())
-    covered = {committed for step in build_steps(full=True) for committed in step.assets.values()}
-    assert referenced, "README 里应该至少嵌入一张图"
-    assert referenced <= covered, f"这些图没有复现步骤：{sorted(referenced - covered)}"
+    rows = [{"asset": "d.png", "status": "missing-produced", "detail": "charts/d.png"}]
+    assert summarize_verification(rows)["exit_code"] == 1

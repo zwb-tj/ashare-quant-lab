@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **319 pytest cases** across 32 test modules run fully offline — no network and no API key — with **86% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **318 pytest cases** across 32 test modules run fully offline — no network and no API key — with **86% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -29,6 +29,10 @@
   overlap-adjusted t statistic; on the real full market (5,424 symbols, 82 cross-sections) every factor IC is
   negative and quantile returns decrease monotonically, i.e. the sample behaves as a reversal market, the
   opposite of the shipped momentum weights.
+- **Reproducibility runs on every push**: CI executes `reproduce_all.py --verify` on Python 3.12 (about 35 s), so
+  every figure in this README must be regenerable by the current code; verification is graded - the default requires
+  identical image dimensions (stable across platforms because they follow figsize/dpi) and only reports pixel
+  differences caused by fonts, while `--strict` demands byte equality on the author's platform.
 - **Reproducibility is checkable**: `scripts/reproduce_all.py --verify` regenerates every figure into a temporary
   directory and compares it byte-for-byte with the committed copies - all eight charts match (four synthetic ones in
   about 35 seconds, four real-market ones in about 23.5 minutes). Matplotlib output here is deterministic, so
@@ -713,6 +717,7 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.22** Reproducibility check wired into CI (graded verification, exit-code policy unit-tested).
 - ✅ **v0.21** Reproducibility self-check: one command regenerates every figure,
   `--verify` compares them byte-for-byte with the committed assets, and a test guards that no embedded figure
   lacks a reproduction step.

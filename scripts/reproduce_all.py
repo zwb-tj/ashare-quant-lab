@@ -15,6 +15,10 @@
     python scripts/reproduce_all.py --full          # 含真实数据
     python scripts/reproduce_all.py --verify        # 校验已提交产物
     python scripts/reproduce_all.py --full --verify # 校验全部
+    python scripts/reproduce_all.py --verify --strict  # 要求逐字节一致（本机）
+
+校验分两级：默认要求**图片尺寸一致**（尺寸由 figsize/dpi 决定，跨平台稳定），像素不同只报告不拦——
+CI 跑在 Linux、字体与作者本机不同，逐字节相等只在同一平台上成立；``--strict`` 用于本机严格校验。
 """
 
 from __future__ import annotations
@@ -125,6 +129,16 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def png_size(path: Path) -> tuple[int, int] | None:
+    """读 PNG 的宽高（不是 PNG 则返回 None）。尺寸由 figsize/dpi 决定，跨平台一致。"""
+    import struct
+
+    data = path.read_bytes()[:24]
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    return struct.unpack(">II", data[16:24])
+
+
 def run_step(step: Step, out_root: Path, cwd: Path = ROOT) -> dict:
     """执行一个步骤，返回 ``{"step", "seconds", "returncode", "missing"}``。"""
     command = [str(out_root) if part == "OUT" else part for part in step.argv()]
@@ -141,8 +155,18 @@ def run_step(step: Step, out_root: Path, cwd: Path = ROOT) -> dict:
     }
 
 
-def verify_assets(steps: list[Step], produced_root: Path, assets_dir: Path = ASSETS) -> list[dict]:
-    """把产出与已提交的 ``docs/assets`` 逐字节比对。"""
+def verify_assets(
+    steps: list[Step],
+    produced_root: Path,
+    assets_dir: Path = ASSETS,
+    strict: bool = True,
+) -> list[dict]:
+    """把产出与已提交的 ``docs/assets`` 比对。
+
+    ``strict=True``（本机默认）：必须逐字节一致，否则状态为 ``DIFFERS``。
+    ``strict=False``（CI 默认）：**尺寸必须一致**；字节不同则记为 ``differs-pixels``
+    （字体/渲染差异，报告但不拦），尺寸不同仍然是 ``DIFFERS``。
+    """
     rows: list[dict] = []
     for step in steps:
         for produced, committed in step.assets.items():
@@ -155,7 +179,12 @@ def verify_assets(steps: list[Step], produced_root: Path, assets_dir: Path = ASS
             elif sha256(source) == sha256(target):
                 rows.append({"asset": committed, "status": "match", "detail": ""})
             else:
-                rows.append({"asset": committed, "status": "DIFFERS", "detail": f"{source.stat().st_size}B vs {target.stat().st_size}B"})
+                size_now, size_ref = png_size(source), png_size(target)
+                detail = f"{size_now} vs {size_ref}" if size_now and size_ref else f"{source.stat().st_size}B vs {target.stat().st_size}B"
+                if size_now and size_ref and size_now == size_ref and not strict:
+                    rows.append({"asset": committed, "status": "differs-pixels", "detail": f"same size {size_now}, different bytes"})
+                else:
+                    rows.append({"asset": committed, "status": "DIFFERS", "detail": detail})
     return rows
 
 
@@ -168,12 +197,34 @@ def _print_table(rows: list[list[str]], header: list[str]) -> None:
         print("| " + " | ".join(str(row[i]).ljust(widths[i]) for i in range(len(header))) + " |")
 
 
+def summarize_verification(rows: list[dict]) -> dict:
+    """把校验结果折成退出码策略：只有"尺寸不同/文件缺失"才算失败。
+
+    ``match`` 与 ``differs-pixels`` 都通过；``differs-pixels`` 表示图片尺寸一致但像素不同，
+    通常是字体/渲染平台差异（本机跑 ``--strict`` 会把它升级成失败）。
+    """
+    exact = [row for row in rows if row["status"] == "match"]
+    pixels = [row for row in rows if row["status"] == "differs-pixels"]
+    broken = [row for row in rows if row["status"] not in ("match", "differs-pixels")]
+    return {
+        "exit_code": 1 if broken else 0,
+        "exact": len(exact),
+        "pixels": len(pixels),
+        "broken": broken,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="reproduce every figure the README claims")
     parser.add_argument("--full", action="store_true", help="also run the steps that need real cached data")
     parser.add_argument("--verify", action="store_true", help="compare regenerated figures with docs/assets byte by byte")
     parser.add_argument("--out", default=None, help="output root (default: output, or a temp dir when verifying)")
     parser.add_argument("--keep", action="store_true", help="keep the temporary directory used when verifying")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="require byte-identical figures (default: only the image size must match, since fonts differ across platforms)",
+    )
     args = parser.parse_args(argv)
 
     steps = build_steps(full=args.full)
@@ -213,15 +264,20 @@ def main(argv: list[str] | None = None) -> int:
     exit_code = 1 if failed else 0
 
     if args.verify:
-        rows = verify_assets(steps, out_root)
+        rows = verify_assets(steps, out_root, strict=args.strict)
         print()
         _print_table([[row["asset"], row["status"], row["detail"] or "-"] for row in rows], ["asset", "status", "detail"])
-        mismatched = [row for row in rows if row["status"] != "match"]
-        if mismatched:
-            print(f"\n校验未通过：{len(mismatched)} 个产物与已提交版本不一致（可能只是数据更新，也可能是图过期了）")
-            exit_code = 1
+        outcome = summarize_verification(rows)
+        exit_code = max(exit_code, outcome["exit_code"])
+        if outcome["broken"]:
+            print(f"\n校验未通过：{len(outcome['broken'])} 个产物与已提交版本不一致（尺寸/缺失不同：可能图过期了）")
+        elif outcome["pixels"]:
+            print(
+                f"\n校验通过（非严格）：{outcome['exact']} 个逐字节一致、{outcome['pixels']} 个尺寸一致但像素不同"
+                "（通常是字体/渲染平台差异；在本机跑 `--strict` 可要求逐字节一致）"
+            )
         else:
-            print(f"\n校验通过：{len(rows)} 个已提交图表与现场生成的结果逐字节一致")
+            print(f"\n校验通过：{outcome['exact']} 个已提交图表与现场生成的结果逐字节一致")
 
     if temporary is not None:
         if args.keep:
