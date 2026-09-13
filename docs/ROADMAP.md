@@ -209,6 +209,12 @@
 - 文档：[English README](../README.en.md)、[案例研究](../docs/CASE_STUDY.md)（研究闭环与负面结果）、README 顶部亮点表 + Mermaid 架构图 + 徽章。
 - 修正：README 的测试数从 216 更新为实测值；`pyproject.toml` 去掉误加的 UTF-8 BOM（会导致 `pip install -e` 解析失败）。
 
+## v0.21 · 可复现性自检（✅ 已完成，2026-09）
+
+- `scripts/reproduce_all.py`：快速档（合成数据，约 35 秒）/ 完整档（+真实行情，约 30 分钟）/ 校验档（与 `docs/assets` 逐字节比对，sha256）。
+- 发现的可用性质：matplotlib 输出是**确定性**的，两次运行 PNG 字节相同，因此「图与代码一致」可以用哈希证明。
+- `tests/test_reproduce.py`：清单自洽、校验逻辑能识别差异与缺失、README 里每张嵌入图都必须有复现步骤。
+
 ## 长期（工程化）
 - 类型检查（mypy）与 lint（ruff）接入 CI；报告产物归档为 artifact。
 - 参数稳健性：walk-forward、参数敏感性矩阵（部分已实现，见 v0.4.4 / v0.6）。

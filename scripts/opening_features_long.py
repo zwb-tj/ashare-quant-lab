@@ -40,7 +40,7 @@ for symbol, group in trades.groupby("symbol"):
     try:
         minute = pd.read_csv(minute_path, parse_dates=["minute"]).set_index("minute")
         daily = pd.read_csv(daily_path, parse_dates=["date"]).set_index("date")
-    except Exception:  # noqa: BLE001
+    except Exception:
         skipped += len(group)
         continue
     if minute.empty or daily.empty:

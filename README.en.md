@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **312 pytest cases** across 32 test modules run fully offline — no network and no API key — with **86% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **319 pytest cases** across 32 test modules run fully offline — no network and no API key — with **86% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -29,6 +29,9 @@
   overlap-adjusted t statistic; on the real full market (5,424 symbols, 82 cross-sections) every factor IC is
   negative and quantile returns decrease monotonically, i.e. the sample behaves as a reversal market, the
   opposite of the shipped momentum weights.
+- **Reproducibility is checkable**: `scripts/reproduce_all.py --verify` regenerates every figure into a temporary
+  directory and compares it byte-for-byte with the committed copies (all four synthetic charts match), and a test
+  fails if any image embedded in this README has no reproduction step behind it.
 - **Visualisation and reporting**: one `aqlab plot` call emits equity, drawdown, strategy-comparison and monthly-return charts plus an **offline self-contained HTML report** (base64 images, zero external references, no JavaScript); matplotlib is an optional extra with a clear degradation message.
 - **The agent layer is evaluated on 20 tasks covering four failure modes** (normal, abstain traps such as
   unknown symbol / invalid parameters / insufficient history / future data / memory bait, contradiction
@@ -708,6 +711,9 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.21** Reproducibility self-check: one command regenerates every figure,
+  `--verify` compares them byte-for-byte with the committed assets, and a test guards that no embedded figure
+  lacks a reproduction step.
 - ✅ **v0.20** Documentation close-out: the case study now covers the whole loop (screening rules, factor IC, portfolio check, horizon robustness, agent evaluation) and the architecture doc lists every module.
 - ✅ **v0.19** Horizon robustness: one-pass multi-horizon IC term structure plus a short-horizon scheme re-run.
 - ✅ **v0.18** Weighting-scheme backtest closing the research loop: fixed vs sign-flipped vs trailing-IC weights,

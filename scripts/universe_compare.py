@@ -76,7 +76,7 @@ for horizon in (1, 3, 5, 10, 20):
     values = reference[f"hold_{horizon}"].dropna()
     rows.append({
         "离场规则": f"机械持有 {horizon} 日",
-        "笔数": int(len(values)),
+        "笔数": len(values),
         "平均收益%": round(float(values.mean()) * 100, 2),
         "中位收益%": round(float(values.median()) * 100, 2),
         "胜率%": round(float((values > 0).mean()) * 100, 1),

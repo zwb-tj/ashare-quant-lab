@@ -48,7 +48,7 @@ for index, symbol in enumerate(symbols, 1):
         continue
     try:
         frame = fetch_daily(symbol, START, END)
-    except Exception:  # noqa: BLE001
+    except Exception:
         failed += 1
         continue
     if frame is None or frame.empty:

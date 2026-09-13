@@ -55,7 +55,7 @@ for index, symbol in enumerate(symbols, 1):
         continue
     try:
         minute = fetch_minute(symbol, START, END)
-    except Exception:  # noqa: BLE001
+    except Exception:
         failed += 1
         continue
     if minute is None or minute.empty:
