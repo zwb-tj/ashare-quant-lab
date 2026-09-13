@@ -136,19 +136,26 @@ IC 是**收盘价对收盘价、整条截面**的秩相关，不等于"买了能
 ## 九、复现
 
 ```bash
-python scripts/fetch_universe_daily.py                       # 全市场日线（约 5 分钟）
+# 0) 全市场日线（首次约 5 分钟，之后增量）
+python scripts/fetch_universe_daily.py
 
-# 1) 全样本 IC + 多重比较校正 + 单次样本外
-aqlab factor-ic --alpha101 --data-dir data/universe/daily \
-    --horizons 1,5,20 --step 5 --min-history 260 --min-symbols 200 --out output
+# 1) 全样本 IC + 多重比较校正 + 单次样本内外        -> output/alpha101_ic_real/
+python scripts/alpha_ic_real.py
 
-# 2) 多折 walk-forward（见 scripts/ 或下方 Python 调用）
-python -c "from aqlab.walk_forward_folds import FoldConfig, run_walk_forward; ..."
+# 2) 多折 walk-forward（4 折，扩张训练窗口）          -> output/alpha101_ic_real/
+python scripts/alpha_walk_forward.py
 
-# 3) 组合层成本检验
-aqlab factor-backtest --data-dir data/universe/daily --top-n 10 --forward 20 --cost-bps 20 --out output
+# 3) 组合层成本检验 + 盈亏平衡成本                    -> output/alpha101_ic_real/
+python scripts/alpha_cost_check.py
 
+# 4) 市场状态依赖性分析                              -> output/alpha101_ic_real/
+python scripts/alpha_state_dependence.py
+
+# 5) 测试（离线，无需网络）
 pytest -q
 ```
 
-产物：`output/alpha101_ic_real/`（校正与样本内外）、`output/alpha101_ic/`（多折、成本、状态）。
+四个脚本都会**先加载全市场日线、再算因子**，单次运行约 8~20 分钟（取决于持有期与折数）；
+产物全部写入 `output/alpha101_ic_real/`。CLI 的同名分析写 `output/alpha101_ic_cli/`，
+两者分开是为了避免一次带合成数据的冒烟运行覆盖真实结果（这条约定有测试守着：
+`tests/test_output_conventions.py`）。
