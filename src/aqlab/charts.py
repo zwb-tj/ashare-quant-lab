@@ -17,7 +17,15 @@ import pandas as pd
 
 from aqlab.metrics import drawdown_series
 
-__all__ = ["monthly_return_matrix", "plot_drawdown", "plot_equity_curves", "plot_monthly_heatmap", "plot_strategy_comparison"]
+__all__ = [
+    "monthly_return_matrix",
+    "plot_drawdown",
+    "plot_equity_curves",
+    "plot_factor_ic",
+    "plot_monthly_heatmap",
+    "plot_quantile_returns",
+    "plot_strategy_comparison",
+]
 
 
 def _pyplot():
@@ -158,6 +166,59 @@ def plot_monthly_heatmap(matrix: pd.DataFrame, path: str | Path, title: str = "M
                 axis.text(column, row, f"{value:.1f}", ha="center", va="center", fontsize=7, color="#222222")
     figure.colorbar(image, ax=axis, shrink=0.85, label="return (%)")
     axis.set_title(title)
+    figure.tight_layout()
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, bbox_inches="tight")
+    plt.close(figure)
+    return target
+
+
+def plot_factor_ic(summary: pd.DataFrame, path: str | Path, title: str = "Factor IC (Spearman)") -> Path:
+    """两个子图：因子平均 IC（带正负色）与 IC_IR。"""
+    plt = _pyplot()
+    if summary is None or summary.empty:
+        raise ValueError("IC summary is empty")
+    frame = summary.copy()
+    for column in ("ic_mean", "ic_ir"):
+        if column not in frame.columns:
+            raise ValueError(f"IC summary needs a '{column}' column")
+    labels = frame["factor"].astype(str).tolist()
+    positions = np.arange(len(labels))
+    figure, axes = plt.subplots(1, 2, figsize=(9.6, 3.4), dpi=140)
+    for axis, column, note in zip(axes, ("ic_mean", "ic_ir"), ("mean IC", "IC_IR (mean / std)"), strict=False):
+        values = pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
+        colors = ["#2e7d32" if value >= 0 else "#c0392b" for value in np.nan_to_num(values)]
+        axis.bar(positions, np.nan_to_num(values), color=colors, alpha=0.85)
+        axis.axhline(0, color="#444444", linewidth=0.8)
+        axis.set_xticks(positions)
+        axis.set_xticklabels(labels, rotation=25, ha="right", fontsize=8)
+        axis.set_title(note, fontsize=9)
+        axis.grid(alpha=0.2, axis="y")
+    figure.suptitle(title, fontsize=10)
+    figure.tight_layout()
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, bbox_inches="tight")
+    plt.close(figure)
+    return target
+
+
+def plot_quantile_returns(table: pd.DataFrame, path: str | Path, title: str = "Forward return by factor quantile (%)") -> Path:
+    """每个因子一条线，横轴为分位组（1 = 因子值最低），纵轴为平均前瞻收益。"""
+    plt = _pyplot()
+    if table is None or table.empty:
+        raise ValueError("quantile table is empty")
+    figure, axis = plt.subplots(figsize=(7.2, 3.6), dpi=140)
+    for factor, group in table.groupby("factor"):
+        ordered = group.sort_values("group")
+        axis.plot(ordered["group"], ordered["mean_forward"] * 100.0, marker="o", linewidth=1.4, label=str(factor))
+    axis.axhline(0, color="#444444", linewidth=0.8)
+    axis.set_xlabel("quantile (1 = lowest factor value)")
+    axis.set_ylabel("mean forward return (%)")
+    axis.set_title(title, fontsize=10)
+    axis.grid(alpha=0.25)
+    axis.legend(fontsize=7, frameon=False, ncol=2)
     figure.tight_layout()
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

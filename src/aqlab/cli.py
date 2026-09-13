@@ -1,4 +1,4 @@
-"""Command line interface.
+﻿"""Command line interface.
 
 Examples
 --------
@@ -961,6 +961,99 @@ def cmd_plot(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_factor_ic(args: argparse.Namespace) -> int:
+    """因子有效性研究：逐截面 IC / IC_IR / 分位收益，并出图与自包含报告。"""
+    import pandas as pd
+
+    from aqlab.factor_ic import ICConfig, factor_ic_panel, quantile_returns, summarize_ic
+    from aqlab.report_html import write_html_report
+    from aqlab.tables import markdown_table
+
+    if args.data_dir:
+        from aqlab.tools import CsvDataSource
+
+        source: Any = CsvDataSource(args.data_dir)
+    else:
+        from aqlab.tools import SyntheticDataSource
+
+        source = SyntheticDataSource(n_symbols=args.symbols, n_days=args.days, seed=args.seed)
+    frames: dict[str, pd.DataFrame] = {}
+    for symbol in source.symbols():
+        try:
+            frame = source.bars(symbol)
+        except Exception:
+            continue
+        if frame is not None and not frame.empty:
+            frames[symbol] = frame
+
+    config = ICConfig(
+        forward_days=args.forward,
+        step_days=args.step,
+        min_history=args.min_history,
+        min_symbols=args.min_symbols,
+        quantiles=args.quantiles,
+    )
+    panel = factor_ic_panel(frames, config)
+    if panel.empty:
+        print("没有可用的截面（检查 --min-history / --min-symbols）")
+        return 1
+    summary = summarize_ic(panel)
+    quantiles = quantile_returns(frames, config)
+
+    print(f"标的 {len(frames)} 只｜截面 {panel['date'].nunique()} 个｜前瞻 {config.forward_days} 日｜步长 {config.step_days} 日")
+    print()
+    view = summary.copy()
+    for column in ("ic_mean", "ic_std", "ic_ir"):
+        view[column] = view[column].astype(float).round(4)
+    view["t_stat"] = view["t_stat"].astype(float).round(2)
+    if "t_stat_adj" in view.columns:
+        view["t_stat_adj"] = view["t_stat_adj"].astype(float).round(2)
+    view["positive_rate"] = (view["positive_rate"].astype(float) * 100).round(1)
+    print(markdown_table(view.rename(columns={
+        "factor": "因子", "periods": "截面数", "ic_mean": "平均IC", "ic_std": "IC标准差",
+        "ic_ir": "IC_IR", "t_stat": "t值", "t_stat_adj": "t值(重叠修正)", "positive_rate": "正IC占比%",
+    })))
+
+    if not quantiles.empty:
+        print()
+        pivot = quantiles.pivot(index="group", columns="factor", values="mean_forward")
+        print("分位组平均前瞻收益（%）")
+        print(markdown_table((pivot * 100).round(2).reset_index().rename(columns={"group": "分位组"})))
+
+    if args.out:
+        out = Path(args.out) / "factor_ic"
+        out.mkdir(parents=True, exist_ok=True)
+        panel.to_csv(out / "ic_panel.csv", index=False, encoding="utf-8-sig")
+        summary.to_csv(out / "ic_summary.csv", index=False, encoding="utf-8-sig")
+        quantiles.to_csv(out / "quantile_returns.csv", index=False, encoding="utf-8-sig")
+        images = []
+        try:
+            from aqlab.charts import plot_factor_ic, plot_quantile_returns
+
+            images = [
+                plot_factor_ic(summary, out / "factor_ic.png"),
+                plot_quantile_returns(quantiles, out / "quantile_returns.png"),
+            ]
+        except RuntimeError as error:                      # matplotlib 未安装
+            print(f"（跳过绘图：{error}）")
+        write_html_report(
+            out / "report.html",
+            title="Factor IC report",
+            summary=summary.round(4),
+            images=images,
+            meta={
+                "symbols": len(frames),
+                "periods": int(panel["date"].nunique()),
+                "forward_days": config.forward_days,
+                "step_days": config.step_days,
+                "source": args.data_dir or f"synthetic(seed={args.seed})",
+            },
+            notes="IC = per-date Spearman rank correlation between the factor and the forward return.",
+        )
+        print(f"\n结果已写入：{out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1213,6 +1306,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_plot.add_argument("--title", default="Built-in strategies on the same synthetic bars")
     p_plot.add_argument("--out", default=str(DEFAULT_OUT))
     p_plot.set_defaults(func=cmd_plot)
+    p_fic = sub.add_parser("factor-ic", help="factor IC / IC_IR / quantile spread study")
+    p_fic.add_argument("--data-dir", default=None, help="directory of OHLCV CSVs; default is a synthetic universe")
+    p_fic.add_argument("--symbols", type=int, default=40)
+    p_fic.add_argument("--days", type=int, default=500)
+    p_fic.add_argument("--seed", type=int, default=11)
+    p_fic.add_argument("--forward", type=int, default=20, help="forward return horizon in trading days")
+    p_fic.add_argument("--step", type=int, default=5, help="trading days between cross-sections")
+    p_fic.add_argument("--min-history", type=int, default=130)
+    p_fic.add_argument("--min-symbols", type=int, default=8)
+    p_fic.add_argument("--quantiles", type=int, default=5)
+    p_fic.add_argument("--out", default=str(DEFAULT_OUT))
+    p_fic.set_defaults(func=cmd_factor_ic)
     return parser
 
 
