@@ -50,7 +50,11 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 "tests/*" = ["E402"]
 
 [tool.mypy]
-python_version = "3.10"
+# No pinned python_version on purpose: mypy parses third-party stubs too, and recent
+# numpy stubs use PEP 695 syntax that only parses as 3.12+, which breaks the whole run.
+# mypy therefore follows the interpreter it runs on (3.12 in CI), while 3.10 syntax
+# compatibility is enforced by ruff's target-version and by running the suite on
+# 3.10 / 3.11 / 3.12 in CI.
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true

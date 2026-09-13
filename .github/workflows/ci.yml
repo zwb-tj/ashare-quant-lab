@@ -21,26 +21,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # Static analysis runs once, on the newest interpreter: lint rules and the
-      # third-party type stubs are interpreter dependent, so pinning the check to one
-      # Python keeps it deterministic. The older interpreters exist to prove the
-      # runtime still works there.
-      - name: Lint (ruff, report only)
+      # Static analysis and the coverage gate run once, on the newest interpreter:
+      # lint rules and third-party type stubs are interpreter dependent, so pinning
+      # them to one Python keeps the result deterministic. The 3.10 / 3.11 jobs exist
+      # to prove the runtime still works there.
+      - name: Lint (ruff)
         if: matrix.python-version == '3.12'
-        continue-on-error: true
-        run: ruff check src tests
+        run: ruff check src tests --output-format=github
 
-      - name: Type check (mypy, report only)
+      - name: Type check (mypy)
         if: matrix.python-version == '3.12'
-        continue-on-error: true
         run: mypy src/aqlab
 
       - name: Run tests
         run: pytest -q
 
-      - name: Coverage (report only)
+      - name: Coverage gate (>= 85%)
         if: matrix.python-version == '3.12'
-        run: pytest -q --cov=aqlab --cov-report=term
+        run: pytest -q --cov=aqlab --cov-report=term --cov-fail-under=85
 
       - name: Smoke test the CLI (offline demo)
         run: |

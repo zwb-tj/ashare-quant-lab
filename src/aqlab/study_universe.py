@@ -106,7 +106,7 @@ def study_universe(
         white = white_line(frame)
         yellow = yellow_line(frame)
         for hit in hits:
-            entry_position = hit + 1
+            entry_position = int(hit) + 1          # numpy 整数需要显式转成 Python int
             if entry_position >= len(frame):
                 continue
             signal_date = pd.Timestamp(frame.index[hit])
