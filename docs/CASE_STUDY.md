@@ -272,6 +272,36 @@ and sha256 fingerprints. The CLI exposes 18 subcommands, 11 exercised end to end
 six read-only JSON-schema tools, returns failures as `ok=false` to force abstention, and traces every
 step.
 
+## Factor research: the same discipline applied to formulaic alphas
+
+The screening-rule work above was extended to a clean-room Alpha101 subset (44 factors implemented, 22 skipped
+with the missing input named, since they need industry or market-cap data that is not available locally). The
+same evidence chain was applied, and each layer removed candidates:
+
+| Layer | Surviving candidates |
+| --- | ---: |
+| Raw IC significant at 5% (111 factor-horizon cells) | 41 |
+| After Benjamini-Hochberg FDR control | 35 |
+| After Bonferroni | 28 |
+| In-sample picks surviving out of sample (single 50/50 split) | 11 of 16 |
+| Robust across 4 walk-forward folds (>=2 folds selected, >=60% survived) | 12 of 74 |
+| Net of 20 bps round-trip cost, net-excess t > 2 | 3 of 33 |
+
+Two things are worth stating plainly. First, the strongest in-sample factors failed out of sample
+(alpha_008: in-sample t = 4.90, out-of-sample -0.54), which is the classic selection trap. Second, the
+per-fold matrix showed fold 4 (test window 2026-03-27 to 2026-06-25) failing for all 20 selected combinations
+while the other three folds produced 36 survivors, so these signals have whole windows where they stop working.
+Attempts to explain that window were rejected by the data: the highest-dispersion bucket actually has the
+strongest IC, and the low-momentum bucket is generally better than the high one, so fold 4 is recorded as
+unexplained rather than assigned a convenient story. Mean turnover across the costed portfolios is 0.90 and the
+median break-even cost 23.4 bps, which is why only 3 of 33 clear a realistic cost hurdle.
+
+Methodological notes that carried over from the rule study: p-values come from a normal approximation of the
+overlap-adjusted t statistic, the multiple-testing correction is implemented in-repo (Bonferroni and
+Benjamini-Hochberg, verified element-wise against statsmodels to 1.1e-16), state buckets use full-sample
+quantiles and are therefore explanatory rather than tradable, and the whole study sits on one market over one
+period (112 usable cross-sections after a 260-bar factor warm-up).
+
 ## Limitations
 
 Sample periods: 2025-01-01 to 2026-09-11 (universe study), 2024-06 to 2026-09 (factor study, 82

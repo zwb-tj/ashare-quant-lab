@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **377 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **380 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -31,10 +31,11 @@
   mostly noise and the optimiser maximises that error; minimum variance keeps the lowest volatility and inverse
   volatility the best return. Annual turnover of 2,280-2,327% makes the cost line decisive.
 - **State dependence**: the IC of each factor is grouped by same-day market state (equal-weight index
-  momentum, cross-sectional dispersion, and the 0AMV band switch). Every one of the ten factors shows a
-  higher IC and t statistic in the closed band than in the open band (alpha_050: +0.063, t=7.94 versus +0.038,
-  t=3.90), while the hypothesis that high dispersion causes the fold-4 failure is rejected by the data - the
-  highest-dispersion bucket actually has the strongest IC. Fold 4 therefore remains mechanistically unexplained.
+  momentum, cross-sectional dispersion, and the 0AMV band switch). Seven of the ten factors show a higher IC
+  in the closed band than in the open band (alpha_050: +0.063, t=7.94 versus +0.038, t=3.90) while three go
+  the other way, so the band switch is informative but not a universal rule. The hypothesis that high
+  dispersion causes the fold-4 failure is rejected by the data - the highest-dispersion bucket actually has
+  the strongest IC - so fold 4 remains mechanistically unexplained.
 - **Walk-forward folds**: the single 50/50 split is upgraded to rolling folds (expanding training windows,
   direction taken from the training segment only). 12 of 74 factor-horizon combinations are robust (selected
   in at least two folds and surviving in at least 60% of them), and the per-fold survival matrix shows that

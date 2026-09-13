@@ -1400,7 +1400,9 @@ def _alpha101_ic(frames, args, horizons) -> int:
                   f"（样本外反向 {int((~survivors['os_same_sign']).sum())} 个）")
 
     if args.out:
-        out = Path(args.out) / "alpha101_ic"
+        # 与真实研究脚本分开目录：脚本写 output/alpha101_ic_real，CLI 写 output/alpha101_ic_cli，
+        # 避免一次带合成数据的冒烟运行把真实全市场产物覆盖掉（曾经发生过）。
+        out = Path(args.out) / "alpha101_ic_cli"
         out.mkdir(parents=True, exist_ok=True)
         full_table.to_csv(out / "alpha101_corrected.csv", index=False, encoding="utf-8-sig")
         table.to_csv(out / "alpha101_is_oos.csv", index=False, encoding="utf-8-sig")
