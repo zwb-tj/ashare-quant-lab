@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ashare-quant-lab"
-version = "0.18.0"
+version = "0.19.0"
 description = "An original, reproducible A-share screening & backtesting lab with an auditable tool-using LLM research agent and evaluation harness."
 readme = "README.md"
 requires-python = ">=3.10"

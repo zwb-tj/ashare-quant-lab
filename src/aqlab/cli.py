@@ -986,8 +986,11 @@ def cmd_factor_ic(args: argparse.Namespace) -> int:
         if frame is not None and not frame.empty:
             frames[symbol] = frame
 
+    horizons = tuple(sorted({int(item) for item in str(args.horizons).split(",") if item.strip()})) if args.horizons else ()
+    if not horizons:
+        horizons = (args.forward,)
     config = ICConfig(
-        forward_days=args.forward,
+        forward_days=horizons[-1] if len(horizons) > 1 else args.forward,
         step_days=args.step,
         min_history=args.min_history,
         min_symbols=args.min_symbols,
@@ -1020,6 +1023,23 @@ def cmd_factor_ic(args: argparse.Namespace) -> int:
         print("分位组平均前瞻收益（%）")
         print(markdown_table((pivot * 100).round(2).reset_index().rename(columns={"group": "分位组"})))
 
+    # 多持有期：一次遍历算出期限结构，回答"IC 是短期还是长期才为负"
+    horizon_table = None
+    if len(horizons) > 1:
+        from aqlab.factor_ic import factor_ic_panel_multi, summarize_ic_by_horizon
+
+        multi = factor_ic_panel_multi(frames, horizons, config)
+        horizon_table = summarize_ic_by_horizon(multi, config)
+        print()
+        print(f"IC 期限结构（持有期 {list(horizons)} 日，重叠修正后 t 值）")
+        wide_ic = horizon_table.pivot(index="horizon", columns="factor", values="ic_mean")
+        print(markdown_table(wide_ic.round(4).reset_index().rename(columns={"horizon": "持有期"})))
+        if args.out:
+            out_dir = Path(args.out) / "factor_ic"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            multi.to_csv(out_dir / "ic_panel_multi.csv", index=False, encoding="utf-8-sig")
+            horizon_table.to_csv(out_dir / "ic_by_horizon.csv", index=False, encoding="utf-8-sig")
+
     if args.out:
         out = Path(args.out) / "factor_ic"
         out.mkdir(parents=True, exist_ok=True)
@@ -1034,6 +1054,10 @@ def cmd_factor_ic(args: argparse.Namespace) -> int:
                 plot_factor_ic(summary, out / "factor_ic.png"),
                 plot_quantile_returns(quantiles, out / "quantile_returns.png"),
             ]
+            if horizon_table is not None and not horizon_table.empty:
+                from aqlab.charts import plot_ic_term_structure
+
+                images.append(plot_ic_term_structure(horizon_table, out / "ic_term_structure.png"))
         except RuntimeError as error:                      # matplotlib 未安装
             print(f"（跳过绘图：{error}）")
         write_html_report(
@@ -1400,6 +1424,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_fic.add_argument("--days", type=int, default=500)
     p_fic.add_argument("--seed", type=int, default=11)
     p_fic.add_argument("--forward", type=int, default=20, help="forward return horizon in trading days")
+    p_fic.add_argument("--horizons", default=None, help="comma list, e.g. 1,3,5,10,20 -> adds an IC term structure")
     p_fic.add_argument("--step", type=int, default=5, help="trading days between cross-sections")
     p_fic.add_argument("--min-history", type=int, default=130)
     p_fic.add_argument("--min-symbols", type=int, default=8)

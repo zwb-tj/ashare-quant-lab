@@ -14,14 +14,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 
 from aqlab.indicators import pct_change_n, realized_vol, rsi, sma
 
-__all__ = ["ICConfig", "factor_ic_panel", "precompute_factors", "quantile_returns", "spearman_ic", "summarize_ic"]
+__all__ = [
+    "ICConfig",
+    "factor_ic_panel",
+    "factor_ic_panel_multi",
+    "precompute_factors",
+    "quantile_returns",
+    "spearman_ic",
+    "summarize_ic",
+    "summarize_ic_by_horizon",
+]
 
 DEFAULT_FACTORS = ("mom_20", "mom_60", "trend_gap", "vol_20", "rsi_14")
 
@@ -204,6 +213,94 @@ def summarize_ic(panel: pd.DataFrame, config: ICConfig | None = None) -> pd.Data
         )
     table = pd.DataFrame(rows)
     return table.sort_values("ic_mean", ascending=False).reset_index(drop=True) if not table.empty else table
+
+
+def factor_ic_panel_multi(
+    universe: Mapping[str, pd.DataFrame],
+    horizons: Sequence[int],
+    config: ICConfig | None = None,
+) -> pd.DataFrame:
+    """多持有期 IC：**一次遍历**算出所有期限，避免对每个期限重跑一遍截面。
+
+    多出来的 ``horizon`` 列让"IC 随持有期怎么变"这个问题变得可查——例如短期限是动量、
+    长期限是反转，这种期限结构不看就会误判因子。
+    """
+    config = config or ICConfig()
+    horizons = tuple(sorted({int(h) for h in horizons if int(h) >= 1}))
+    if not horizons:
+        raise ValueError("horizons must contain at least one positive integer")
+    precomputed = precompute_factors(universe, config)
+
+    all_dates = sorted({date for table in precomputed.values() for date in table.index})
+    start = pd.Timestamp(config.start) if config.start else None
+    end = pd.Timestamp(config.end) if config.end else None
+    usable = [date for date in all_dates if (start is None or date >= start) and (end is None or date <= end)]
+    usable = usable[:: config.step_days]
+
+    rows: list[dict] = []
+    for as_of in usable:
+        table = _cross_section(precomputed, as_of, config.min_history)
+        if table.empty or len(table) < config.min_symbols:
+            continue
+        forwards: dict[int, list[float]] = {horizon: [] for horizon in horizons}
+        for symbol in table["symbol"]:
+            close = precomputed[symbol]["close"]
+            position = close.index.get_loc(as_of)
+            entry = float(close.iloc[position])
+            for horizon in horizons:
+                target = position + horizon
+                if target >= len(close) or not np.isfinite(entry) or entry <= 0:
+                    forwards[horizon].append(np.nan)
+                    continue
+                exit_price = float(close.iloc[target])
+                forwards[horizon].append(exit_price / entry - 1.0 if np.isfinite(exit_price) else np.nan)
+        for horizon in horizons:
+            frame = table.assign(forward=forwards[horizon])
+            for factor in config.factors:
+                if factor not in frame.columns:
+                    continue
+                rows.append(
+                    {
+                        "date": pd.Timestamp(as_of),
+                        "factor": factor,
+                        "horizon": horizon,
+                        "ic": spearman_ic(frame[factor], frame["forward"]),
+                        "symbols": int(frame[factor].notna().sum()),
+                    }
+                )
+    return pd.DataFrame(rows).dropna(subset=["ic"]).reset_index(drop=True)
+
+
+def summarize_ic_by_horizon(panel: pd.DataFrame, config: ICConfig | None = None) -> pd.DataFrame:
+    """多期限面板的汇总：每个 (因子, 期限) 的 IC 均值、IR、修正 t 值。
+
+    重叠修正按各自的期限算：``overlap = ceil(horizon / step_days)``。
+    """
+    if panel is None or panel.empty or "horizon" not in panel.columns:
+        return pd.DataFrame()
+    step = (config or ICConfig()).step_days
+    rows: list[dict] = []
+    for (factor, horizon), group in panel.groupby(["factor", "horizon"]):
+        values = pd.to_numeric(group["ic"], errors="coerce").dropna()
+        if values.empty:
+            continue
+        mean = float(values.mean())
+        std = float(values.std(ddof=1)) if len(values) > 1 else np.nan
+        ir = mean / std if std and np.isfinite(std) and std > 0 else np.nan
+        t_stat = ir * np.sqrt(len(values)) if np.isfinite(ir) else np.nan
+        overlap = max(1, int(np.ceil(int(horizon) / step)))
+        rows.append(
+            {
+                "factor": factor,
+                "horizon": int(horizon),
+                "periods": len(values),
+                "ic_mean": mean,
+                "ic_ir": ir,
+                "t_stat_adj": t_stat / np.sqrt(overlap) if np.isfinite(t_stat) else np.nan,
+                "positive_rate": float((values > 0).mean()),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["factor", "horizon"]).reset_index(drop=True)
 
 
 def quantile_returns(universe: Mapping[str, pd.DataFrame], config: ICConfig | None = None) -> pd.DataFrame:

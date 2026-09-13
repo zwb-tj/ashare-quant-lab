@@ -133,3 +133,18 @@ def test_html_report_is_self_contained(tmp_path, results):
         assert external not in text, f"报告不该出现外部依赖：{external}"
     assert "no rows" in render_html("t", pd.DataFrame(), images=[])
 
+def test_ic_term_structure_chart(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"factor": "mom_20", "horizon": 1, "ic_mean": 0.02},
+            {"factor": "mom_20", "horizon": 20, "ic_mean": -0.05},
+            {"factor": "mom_60", "horizon": 1, "ic_mean": 0.01},
+            {"factor": "mom_60", "horizon": 20, "ic_mean": -0.08},
+        ]
+    )
+    from aqlab.charts import plot_ic_term_structure
+
+    path = plot_ic_term_structure(summary, tmp_path / "term.png")
+    assert path.exists() and png_size(path)[0] > 500
+    with pytest.raises(ValueError):
+        plot_ic_term_structure(pd.DataFrame(), tmp_path / "empty.png")

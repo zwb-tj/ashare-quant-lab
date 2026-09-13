@@ -22,6 +22,7 @@ __all__ = [
     "plot_drawdown",
     "plot_equity_curves",
     "plot_factor_ic",
+    "plot_ic_term_structure",
     "plot_monthly_heatmap",
     "plot_quantile_returns",
     "plot_scheme_curves",
@@ -220,6 +221,29 @@ def plot_quantile_returns(table: pd.DataFrame, path: str | Path, title: str = "F
     axis.set_title(title, fontsize=10)
     axis.grid(alpha=0.25)
     axis.legend(fontsize=7, frameon=False, ncol=2)
+    figure.tight_layout()
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(target, bbox_inches="tight")
+    plt.close(figure)
+    return target
+
+
+def plot_ic_term_structure(summary: pd.DataFrame, path: str | Path, title: str = "IC by holding horizon") -> Path:
+    """因子的 IC 期限结构：横轴持有期，纵轴平均 IC，每个因子一条线。"""
+    plt = _pyplot()
+    if summary is None or summary.empty or "horizon" not in summary.columns:
+        raise ValueError("horizon summary is empty")
+    figure, axis = plt.subplots(figsize=(7.6, 3.8), dpi=140)
+    for factor, group in summary.groupby("factor"):
+        ordered = group.sort_values("horizon")
+        axis.plot(ordered["horizon"], ordered["ic_mean"], marker="o", linewidth=1.5, label=str(factor))
+    axis.axhline(0, color="#444444", linewidth=0.9)
+    axis.set_xlabel("holding horizon (trading days)")
+    axis.set_ylabel("mean Spearman IC")
+    axis.set_title(title, fontsize=10)
+    axis.grid(alpha=0.25)
+    axis.legend(fontsize=8, frameon=False, ncol=2)
     figure.tight_layout()
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -13,10 +13,12 @@ import pytest
 from aqlab.factor_ic import (
     ICConfig,
     factor_ic_panel,
+    factor_ic_panel_multi,
     precompute_factors,
     quantile_returns,
     spearman_ic,
     summarize_ic,
+    summarize_ic_by_horizon,
 )
 from aqlab.screen import factor_table
 from aqlab.tools import SyntheticDataSource
@@ -91,6 +93,31 @@ def test_quantile_returns_covers_every_group(frames):
     assert set(table["group"]) == {1, 2, 3, 4}
     assert set(table["factor"]) == set(config.factors)
     assert (table["periods"] > 0).all()
+
+
+def test_multi_horizon_panel_matches_the_single_horizon_panel(frames):
+    """一次遍历算多期限，必须与"每个期限单独跑一遍"逐位一致。"""
+    single_config = ICConfig(forward_days=20, step_days=5, min_history=130, min_symbols=5)
+    single = factor_ic_panel(frames, single_config)[["date", "factor", "ic"]].reset_index(drop=True)
+    multi = factor_ic_panel_multi(frames, (5, 20), single_config)
+    subset = multi[multi["horizon"] == 20][["date", "factor", "ic"]].reset_index(drop=True)
+    assert subset.equals(single)
+    assert set(multi["horizon"]) == {5, 20}
+
+
+def test_summarize_ic_by_horizon_covers_every_horizon(frames):
+    config = ICConfig(step_days=5, min_history=130, min_symbols=5)
+    table = summarize_ic_by_horizon(factor_ic_panel_multi(frames, (1, 20), config), config)
+    assert {"factor", "horizon", "periods", "ic_mean", "ic_ir", "t_stat_adj", "positive_rate"} <= set(table.columns)
+    assert set(table["horizon"]) == {1, 20}          # 重叠修正按各自期限算，1 日与 20 日都在
+    assert (table["periods"] > 0).all()
+    assert summarize_ic_by_horizon(pd.DataFrame()).empty
+    assert summarize_ic_by_horizon(pd.DataFrame({"factor": ["a"], "ic": [0.1]})).empty      # 缺 horizon 列
+
+
+def test_multi_horizon_requires_at_least_one_horizon(frames):
+    with pytest.raises(ValueError):
+        factor_ic_panel_multi(frames, ())
 
 
 def test_config_validation():
