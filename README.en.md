@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **291 pytest cases** across 29 test modules run fully offline — no network and no API key — with **89% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **292 pytest cases** across 29 test modules run fully offline — no network and no API key — with **89% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -17,6 +17,11 @@
 - **Reproducibility by construction**: deterministic synthetic bars from fixed seeds, so `pytest` and the demo produce identical output on any machine, with an end-to-end demo that completes in three minutes.
 - **A small dependency surface**: runtime dependencies are numpy + pandas only; the toolkit is a clean-room original implementation under MIT, with zero third-party strategy code.
 - **Visualisation and reporting**: one `aqlab plot` call emits equity, drawdown, strategy-comparison and monthly-return charts plus an **offline self-contained HTML report** (base64 images, zero external references, no JavaScript); matplotlib is an optional extra with a clear degradation message.
+- **The agent layer is evaluated on 20 tasks covering four failure modes** (normal, abstain traps such as
+  unknown symbol / invalid parameters / insufficient history / future data / memory bait, contradiction
+  premises, and repeatability), scoring grounded number rate 0.981, abstain accuracy 1.000,
+  contradiction accuracy 1.000, zero constraint violations and repeat consistency 1.000; a deliberately
+  bad agent in the test suite has to score badly, or the yardstick itself is broken.
 - **The agent layer is evaluated, not asserted**: 6 read-only JSON-Schema tools behind a bounded plan-act-observe loop with a full-step trace, scoring grounded number rate 0.900, abstain accuracy 1.000 and regression consistency 1.000 on the 5-task offline suite.
 
 All commands, flags, file paths and numeric values below are reproduced verbatim from the source document; captured console output keeps its original numbers, with Chinese labels rendered in English for readability.
@@ -690,6 +695,7 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.16** Agent evaluation expanded to **20 tasks across four failure modes** (normal, abstain traps, contradiction premises, repeatability) with `contradiction_accuracy` and `constraint_violations` added.
 - ✅ **v0.15** Monthly-return heatmap plus a self-contained offline HTML report, both produced by `aqlab plot`.
 - ✅ **v0.14** Static analysis in CI: `ruff` (a pinned, deliberately not "ALL" rule set, currently clean) and `mypy` (32 source files, no errors) are merge gates, which surfaced and fixed implicit union types, a datasource reassignment, and two stale `type: ignore` comments.
 - ✅ **v0.13** Presentation surface: CLI end-to-end tests raise statement coverage from 74% to 89%, CI coverage gate at >=85%, an English README, and a case study including the rejected hypotheses.
