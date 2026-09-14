@@ -51,6 +51,15 @@ def test_fresh_clone_verifier_exists_and_is_referenced():
     assert "verify_fresh_clone.py" in readme, "README 的从零开始章节应提到它"
 
 
+def test_brief_claim_verifier_exists():
+    """"速览不许吹牛"的把关脚本必须入库，且能解释它在核对什么。"""
+    script = ROOT / "scripts" / "verify_brief_claims.py"
+    assert script.exists(), "应提供速览声明核对脚本"
+    body = script.read_text(encoding="utf-8")
+    for keyword in ("alpha101_ic_real", "walk_forward_summary", "alpha_portfolio_costs", "state_regime_bucket"):
+        assert keyword in body, f"核对脚本应检查 {keyword}"
+
+
 def test_research_scripts_avoid_hardcoded_absolute_paths():
     """研究脚本不应写死作者本机的绝对路径（否则别人跑不通）。"""
     for path in sorted((ROOT / "scripts").glob("alpha_*.py")):
