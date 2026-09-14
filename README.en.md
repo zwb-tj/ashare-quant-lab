@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **384 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **389 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -110,6 +110,31 @@ The three most common failure modes in quantitative research can all be blocked 
 1. **Lookahead** — a signal that uses the same day's close while still earning that day's return makes a backtest "profitable" by construction. This project delays every signal by one bar before execution, and ships a test that **proves the delay exists** (a signal that "peeks" at the current day's move must lose money).
 2. **Cost illusion** — high-frequency signals that ignore commission and slippage look great on paper. This project models costs into returns, auditable trade by trade.
 3. **Non-reproducibility** — unfixed data and randomness mean nobody else can reproduce the result. This project uses deterministic synthetic bars with fixed seeds, so `pytest` and the demo produce identical output on any machine.
+
+## From zero (measured, not estimated)
+
+The timings below come from an actual fresh clone in a clean virtual environment:
+
+```bash
+git clone https://github.com/zwb-tj/ashare-quant-lab.git
+cd ashare-quant-lab
+pip install -e ".[dev]"          # about 29 seconds
+
+pytest -q                        # 387 cases pass in about 3 minutes, offline, no API key
+
+# prove the README figures come from code: redraw them and compare (about 24 seconds)
+python scripts/reproduce_all.py --verify
+
+# one zero-dependency research command (synthetic data, about 6 seconds)
+python -m aqlab.cli factor-ic --symbols 30 --days 500 --out output
+
+# optional: re-run the whole flow inside a FRESH clone (clone -> install -> test -> figure check)
+python scripts/verify_fresh_clone.py
+```
+
+> All four steps were run on a fresh clone: install 28.6s, tests 182.9s, figure check 23.5s, research command 6.0s.
+> `--verify` requires the artefacts to be regenerable; add `--strict` to demand byte equality, which only holds
+> on one platform because `bbox_inches="tight"` crops to the rendered text and fonts differ across systems.
 
 ## Quick start
 

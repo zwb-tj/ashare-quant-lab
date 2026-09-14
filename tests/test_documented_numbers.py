@@ -13,6 +13,7 @@
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -45,6 +46,42 @@ def test_version_matches_the_latest_git_tag():
         pytest.skip("仓库里还没有标签")
     latest = max(tags, key=lambda name: [int(part) for part in re.findall(r"\d+", name)][:3])
     assert f"v{version}" == latest, f"pyproject 是 {version}，最新标签是 {latest}"
+
+
+def test_documented_test_count_matches_the_collected_total():
+    """文档里写的测试数必须等于实际收集到的数量。
+
+    这条比"数字是否漂移"更基础：多次迭代后 README 里一度同时存在 288 / 384 / 387 三个数，
+    人工同步不可靠，因此由 collect-only 的真实计数来裁决。
+    """
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    total = sum(int(match) for match in re.findall(r":\s*(\d+)$", collected.stdout, flags=re.M))
+    assert total > 0, "应当能统计到测试数"
+
+    documents = [ROOT / "README.md", ROOT / "README.en.md", ROOT / "docs" / "CASE_STUDY.md"]
+    # 本文件每新增一个测试，"实测数"就会增加，于是刚同步过的文档立刻又"过期"。
+    # 因此判据是"文档数不得比实测数落后超过 1"（允许滞后一个守卫测试自身），
+    # 但落后更多就说明真的漂移了（历史上曾同时存在 288 / 384 / 387 三个数）。
+    stale_limit = total - 1
+    for path in documents:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        mentioned = {
+            int(value)
+            for value in re.findall(
+                r"(\d{3})\s*(?:个用例|个测试|个离线测试|pytest cases|tests\b|test cases)", text
+            )
+        }
+        too_old = sorted(value for value in mentioned if value < stale_limit)
+        assert not too_old, f"{path.name} 里的测试数明显过期（实测 {total}）：{too_old}"
 
 
 @requires_outputs

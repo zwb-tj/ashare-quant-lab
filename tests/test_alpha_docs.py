@@ -41,6 +41,16 @@ def test_doc_does_not_leave_ellipsis_in_commands():
             assert "..." not in line, f"命令不应带省略号：{line.strip()}"
 
 
+def test_fresh_clone_verifier_exists_and_is_referenced():
+    """全新克隆验证脚本必须存在，且 README 的"从零开始"要提到它。"""
+    script = ROOT / "scripts" / "verify_fresh_clone.py"
+    assert script.exists(), "应提供全新克隆验证脚本"
+    text = script.read_text(encoding="utf-8")
+    assert "git clone" in text and "pytest" in text and "reproduce_all.py" in text
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "verify_fresh_clone.py" in readme, "README 的从零开始章节应提到它"
+
+
 def test_research_scripts_avoid_hardcoded_absolute_paths():
     """研究脚本不应写死作者本机的绝对路径（否则别人跑不通）。"""
     for path in sorted((ROOT / "scripts").glob("alpha_*.py")):
