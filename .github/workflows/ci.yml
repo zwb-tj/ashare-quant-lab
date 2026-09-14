@@ -5,12 +5,54 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # Full gate: static analysis, the coverage threshold, figure reproducibility and the CLI
+  # smoke test. Runs once on the newest interpreter because lint rules and third-party type
+  # stubs are interpreter dependent.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Environment report
+        run: |
+          python -VV
+          python -c "import sys, platform; print('platform:', platform.platform()); print('executable:', sys.executable)"
+          python -m pip list --format=freeze | grep -Ei '^(numpy|pandas|matplotlib|pytest|pytest-cov|ruff|mypy|tomli)=' || true
+          python -m pytest --collect-only -q | tail -n 3
+      - name: Lint (ruff)
+        run: ruff check src tests scripts --output-format=github
+      - name: Type check (mypy)
+        run: mypy src/aqlab
+      - name: Run tests
+        run: pytest -q
+      - name: Coverage gate (>= 85%)
+        run: pytest -q --cov=aqlab --cov-report=term --cov-fail-under=85
+      # Gates on regenerability: every figure in the README must be reproducible by the
+      # current code. Identity with the committed files is a same-platform property
+      # (bbox_inches="tight" crops to the text extent and fonts differ on CI), so identity
+      # is checked locally with --strict instead of failing here.
+      - name: Reproduce every README figure
+        run: python scripts/reproduce_all.py --verify
+      - name: Smoke test the CLI (offline demo)
+        run: |
+          python -m aqlab.cli demo --seed 25 --out /tmp/aqlab_out
+          python -m aqlab.cli screen --symbols 20 --days 400 --top 5 --out /tmp/aqlab_out
+
+  # Compatibility: the project declares requires-python >= 3.10 and the author's machine only
+  # has 3.12, so the older interpreters need their own job. Kept deliberately small so it is
+  # obvious from the job name whether a failure is a gate or a compatibility problem.
+  compat:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,41 +62,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-
-      # Static analysis and the coverage gate run once, on the newest interpreter:
-      # lint rules and third-party type stubs are interpreter dependent, so pinning
-      # them to one Python keeps the result deterministic. The 3.10 / 3.11 jobs exist
-      # to prove the runtime still works there.
-      - name: Lint (ruff)
-        if: matrix.python-version == '3.12'
-        run: ruff check src tests scripts --output-format=github
-
-      - name: Type check (mypy)
-        if: matrix.python-version == '3.12'
-        run: mypy src/aqlab
-
-      # Cheap guard for every matrix entry: the project declares >=3.10, but the author's
-      # machine only has 3.12, so version-specific breakage (e.g. importing a stdlib module
-      # that arrived in 3.11) would otherwise only show up here.
       - name: Import every module on this interpreter
-        run: python -c "import importlib, pathlib; [importlib.import_module('aqlab.' + p.stem) for p in sorted(pathlib.Path('src/aqlab').glob('*.py')) if p.stem != '__init__']"
-
+        run: |
+          python -VV
+          python -c "import importlib, pathlib; [importlib.import_module('aqlab.' + p.stem) for p in sorted(pathlib.Path('src/aqlab').glob('*.py')) if p.stem != '__init__']"
       - name: Run tests
         run: pytest -q
-
-      - name: Coverage gate (>= 85%)
-        if: matrix.python-version == '3.12'
-        run: pytest -q --cov=aqlab --cov-report=term --cov-fail-under=85
-
-      # Gates on regenerability: every figure in the README must be reproducible by the
-      # current code. Identity with the committed files is a same-platform property
-      # (bbox_inches="tight" crops to the text extent and fonts differ on CI), so identity
-      # is verified locally with --strict rather than failing here.
-      - name: Reproduce every README figure
-        if: matrix.python-version == '3.12'
-        run: python scripts/reproduce_all.py --verify
-
-      - name: Smoke test the CLI (offline demo)
-        run: |
-          python -m aqlab.cli demo --seed 25 --out /tmp/aqlab_out
-          python -m aqlab.cli screen --symbols 20 --days 400 --top 5 --out /tmp/aqlab_out
