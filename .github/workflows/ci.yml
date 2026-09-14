@@ -33,6 +33,12 @@ jobs:
         if: matrix.python-version == '3.12'
         run: mypy src/aqlab
 
+      # Cheap guard for every matrix entry: the project declares >=3.10, but the author's
+      # machine only has 3.12, so version-specific breakage (e.g. importing a stdlib module
+      # that arrived in 3.11) would otherwise only show up here.
+      - name: Import every module on this interpreter
+        run: python -c "import importlib, pathlib; [importlib.import_module('aqlab.' + p.stem) for p in sorted(pathlib.Path('src/aqlab').glob('*.py')) if p.stem != '__init__']"
+
       - name: Run tests
         run: pytest -q
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ashare-quant-lab"
-version = "0.31.0"
+version = "0.31.1"
 description = "An original, reproducible A-share screening & backtesting lab with an auditable tool-using LLM research agent and evaluation harness."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,7 +19,15 @@ dependencies = [
 [project.optional-dependencies]
 data = ["tushare>=1.2", "akshare>=1.10"]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4", "pytest-cov>=4.1", "matplotlib>=3.7", "ruff>=0.6", "mypy>=1.11"]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "matplotlib>=3.7",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    # Python 3.10 has no stdlib tomllib, so tests that parse pyproject.toml fall back to tomli.
+    "tomli>=2.0; python_version < '3.11'",
+]
 
 [project.scripts]
 aqlab = "aqlab.cli:main"

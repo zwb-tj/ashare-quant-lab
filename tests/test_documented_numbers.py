@@ -34,11 +34,26 @@ requires_outputs = pytest.mark.skipif(
 )
 
 
+def _load_pyproject() -> dict:
+    """读取 pyproject.toml。
+
+    项目声明支持 Python **3.10**，而标准库的 ``tomllib`` 是 3.11 才加入的——
+    所以这里做回退：3.11+ 用 ``tomllib``，3.10 用第三方 ``tomli``，两者都没有就跳过。
+    直接 ``import tomllib`` 会让 3.10 的 CI 整个报 ImportError（曾经发生过）。
+    """
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib  # Python 3.11+
+
+        return tomllib.loads(text)
+    except ModuleNotFoundError:
+        tomli = pytest.importorskip("tomli", reason="Python 3.10 needs the tomli backport to parse TOML")
+        return tomli.loads(text)
+
+
 def test_version_matches_the_latest_git_tag():
     """pyproject 的版本号不能落后于标签（曾经出现过 0.30.0 对 v0.30.1）。"""
-    import tomllib
-
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    version = _load_pyproject()["project"]["version"]
     tags = subprocess.run(
         ["git", "tag", "--list", "v*"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace"
     ).stdout.split()
