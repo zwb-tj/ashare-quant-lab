@@ -8,7 +8,7 @@
 
 ## Highlights
 
-- **400 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
+- **409 pytest cases** across 32 test modules run fully offline — no network and no API key — with **87% statement coverage** enforced in CI by `--cov-fail-under=85`, on a Python 3.10 / 3.11 / 3.12 matrix, alongside **18 CLI subcommands** (11 of them exercised end to end by the same suite). The same pipeline gates **ruff** (a pinned, deliberately not-"ALL" rule set, currently zero findings) and **mypy** (32 source files, no errors).
 - **Full-market scale, not a toy sample**: 5,424 symbols and **58,682 trades** over 2025-01-01 ~ 2026-09-11, every trade benchmarked against an equal-weight market index over the same holding period.
 - **Negative results are quantified instead of hidden**: the published-picks backtest over 334 de-duplicated records (282 symbols) shows excess returns of -0.40% / -1.18% / -2.15% / -4.23% at 1 / 3 / 5 / 10 days, with t = -2.25 ~ -5.58.
 - **One stable effect survived**: the 0AMV regime gate — open band +0.69% vs closed band -0.35%; inside the 2026-06~09 window the open band shows excess +0.78% (t=3.44) against -0.81% (t=-6.08) for the closed band.
@@ -77,6 +77,14 @@
   "the figures match the code" is proved by hash rather than by eye. A test also fails if any image embedded in
   this README has no reproduction step behind it.
 - **Visualisation and reporting**: one `aqlab plot` call emits equity, drawdown, strategy-comparison and monthly-return charts plus an **offline self-contained HTML report** (base64 images, zero external references, no JavaScript); matplotlib is an optional extra with a clear degradation message.
+- **The same 20-task evaluation runs against both a deterministic offline script agent and a real model**
+  (`--mode live`), with identical tasks and criteria: grounded-number rate 0.989, abstention 1.000,
+  constraint violations 0 and reproducible conclusions 1.000 - on par with the scripted agent, with a higher
+  tool-success rate (0.978 vs 0.913). Contradiction correction is 0.667, a genuine weakness kept as is. Two
+  answers to the same question were 0% identical word-for-word yet 100% identical in their numbers, which is
+  why reproducibility is measured on conclusions rather than text. The criteria themselves were corrected
+  three times by this data: phrase matching to behaviour, quote exemption, and verbatim to conclusion
+  comparison.
 - **The agent layer is evaluated on 20 tasks covering four failure modes** (normal, abstain traps such as
   unknown symbol / invalid parameters / insufficient history / future data / memory bait, contradiction
   premises, and repeatability), scoring grounded number rate 0.981, abstain accuracy 1.000,
