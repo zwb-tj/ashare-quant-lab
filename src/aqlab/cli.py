@@ -1433,9 +1433,59 @@ def _alpha101_ic(frames, args, horizons) -> int:
     return 0
 
 
+
+def _register_doctor(sub) -> None:
+    parser = sub.add_parser(
+        "doctor",
+        help="report which configuration is available (never prints secret values)",
+    )
+    parser.set_defaults(func=cmd_doctor)
+
+
+def cmd_doctor(args) -> int:
+    """检查运行所需配置是否就绪：数据源、通知、LLM。只报告来源与长度，不打印密钥。"""
+    import os
+
+    import pandas as pd
+
+    from aqlab.env_file import PROJECT_ROOT, load_env_file
+
+    loaded = load_env_file()
+    rows = []
+    for group, key, note in (
+        ("数据源", "TUSHARE_TOKEN", "fetch --source tushare 需要"),
+        ("通知", "FEISHU_WEBHOOK", "notify 需要"),
+        ("LLM", "AQLAB_LLM_API_KEY", "agent / eval --mode live 需要"),
+    ):
+        value = os.environ.get(key, "")
+        if not value:
+            origin = "未设置"
+        elif key in loaded:
+            origin = f"来自 .env（长度 {len(value)}）"
+        else:
+            origin = f"来自环境变量（长度 {len(value)}）"
+        rows.append({"用途": group, "变量": key, "状态": origin, "说明": note})
+
+    print("配置文件：", PROJECT_ROOT / ".env", "（存在）" if (PROJECT_ROOT / ".env").is_file() else "（不存在）")
+    print()
+    print(markdown_table(pd.DataFrame(rows)))
+    print()
+    if os.environ.get("AQLAB_LLM_API_KEY"):
+        base = os.environ.get("AQLAB_LLM_BASE_URL", "https://api.deepseek.com/v1")
+        model = os.environ.get("AQLAB_LLM_MODEL", "deepseek-chat")
+        print(f"LLM 目标：{base}｜模型 {model}")
+        print("可以运行：aqlab eval --mode live")
+    else:
+        print("未检测到 LLM key。两种提供方式：")
+        print("  1) 在项目根目录创建 .env（已在 .gitignore 中），写入 AQLAB_LLM_API_KEY=...")
+        print("  2) 临时导出环境变量（当前会话有效）")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
+    _register_doctor(sub)
 
     p_demo = sub.add_parser("demo", help="run the offline synthetic demo for all built-in strategies")
     p_demo.add_argument("--seed", type=int, default=7, help="synthetic data seed (7 = bear scenario, 25 = bull scenario)")
@@ -1741,6 +1791,14 @@ def _make_output_encoding_safe() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 先加载本地的 .env（若存在），这样 .env.example 里承诺的配置方式才真的有效；
+    # 已设置的环境变量优先，因此 CI 与显式 export 不受影响。
+    from aqlab.env_file import load_env_file
+
+    loaded = load_env_file()
+    if loaded and "--quiet" not in (argv if argv is not None else sys.argv[1:]):
+        pass  # 不打印键值（避免把密钥写进日志），需要时用 `aqlab doctor`
+
     _make_output_encoding_safe()
     parser = build_parser()
     args = parser.parse_args(argv)
