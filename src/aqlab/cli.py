@@ -1434,6 +1434,51 @@ def _alpha101_ic(frames, args, horizons) -> int:
 
 
 
+def _register_trace(sub) -> None:
+    parser = sub.add_parser(
+        "trace",
+        help="render an agent trace JSON into a readable single-file HTML",
+    )
+    parser.add_argument("--in", dest="trace_in", required=True, help="trace JSON produced by `aqlab agent --trace`")
+    parser.add_argument("--out", default=None, help="output HTML path (default: output/trace/trace.html)")
+    parser.add_argument("--title", default=None, help="page title")
+    parser.set_defaults(func=cmd_trace)
+
+
+def cmd_trace(args) -> int:
+    """把 trace JSON 渲染成 HTML；同时打印一张汇总表，便于命令行快速判断。"""
+    import json
+
+    import pandas as pd
+
+    from aqlab.tables import markdown_table
+    from aqlab.trace_view import summarize_trace, write_trace_html
+
+    source = Path(args.trace_in)
+    if not source.is_file():
+        print(f"找不到 trace 文件：{source}")
+        return 1
+    trace = json.loads(source.read_text(encoding="utf-8"))
+    if isinstance(trace, dict) and isinstance(trace.get("result"), dict):
+        trace = trace["result"]
+
+    output = Path(args.out) if args.out else DEFAULT_OUT / "trace" / f"{source.stem}.html"
+    write_trace_html(trace, output, title=args.title or f"Agent trace · {source.stem}")
+
+    summary = summarize_trace(trace)
+    rows = [
+        {"项目": "问题", "值": str(trace.get("question") or "")[:70]},
+        {"项目": "停止原因", "值": summary["stopped_reason"] or "未知"},
+        {"项目": "步数", "值": summary["steps"]},
+        {"项目": "工具调用", "值": f"{summary['tool_calls']} 次（{', '.join(summary['tools']) or '无'}）"},
+        {"项目": "失败的调用", "值": len(summary["failures"])},
+    ]
+    print(markdown_table(pd.DataFrame(rows)))
+    print()
+    print(f"HTML 已写入：{output}")
+    return 0
+
+
 def _register_doctor(sub) -> None:
     parser = sub.add_parser(
         "doctor",
@@ -1485,6 +1530,7 @@ def cmd_doctor(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aqlab", description="A-share quant lab: screening + backtesting")
     sub = parser.add_subparsers(dest="command", required=True)
+    _register_trace(sub)
     _register_doctor(sub)
 
     p_demo = sub.add_parser("demo", help="run the offline synthetic demo for all built-in strategies")

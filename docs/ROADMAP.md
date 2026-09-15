@@ -271,6 +271,11 @@
 - 判据修正三次：措辞匹配 → 行为判据；引号包裹的引用豁免；逐字比对 → 数字结论比对。
 - 密钥卫生：`tests/test_secret_hygiene.py` + `scripts/scan_secrets.py`（曾把真实 key 填进会被提交的 .env.example，未提交即搬走）。
 
+## v0.34 · Agent trace 可视化（✅ 已完成，2026-09）
+
+- `src/aqlab/trace_view.py` + `aqlab trace`：单文件 HTML（内联样式、零外部引用、确定性输出）。
+- 失败调用 / 未落地数字 / 非 final 停止均显式标红；落地判定复用 `evaluation.grounding_report`，口径统一。
+
 ## 长期（工程化）
 - 类型检查（mypy）与 lint（ruff）接入 CI；报告产物归档为 artifact。
 - 参数稳健性：walk-forward、参数敏感性矩阵（部分已实现，见 v0.4.4 / v0.6）。

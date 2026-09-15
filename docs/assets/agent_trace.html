@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Agent trace · demo_live</title>
+<style>
+  :root { --fg:#1b1f24; --muted:#5b6672; --line:#e3e7ec; --ok:#1a7f37; --warn:#b42318; --bg:#fff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; font:14px/1.6 -apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Microsoft YaHei",sans-serif; color:var(--fg); background:var(--bg); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .muted { color:var(--muted); }
+  .cards { display:flex; flex-wrap:wrap; gap:10px; margin:18px 0 22px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:10px 14px; min-width:130px; }
+  .card .k { font-size:12px; color:var(--muted); }
+  .card .v { font-size:18px; font-weight:600; }
+  .card.warn .v { color:var(--warn); }
+  .card.ok .v { color:var(--ok); }
+  .qa { border-left:3px solid var(--line); padding:2px 0 2px 14px; margin:0 0 20px; }
+  .qa .label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .step { border:1px solid var(--line); border-radius:10px; margin:0 0 14px; overflow:hidden; }
+  .step-head { background:#f6f8fa; padding:8px 14px; font-weight:600; border-bottom:1px solid var(--line); }
+  .assistant { padding:12px 14px; white-space:pre-wrap; }
+  .tool { border-top:1px dashed var(--line); padding:10px 14px; }
+  .tool-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .badge { font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid; }
+  .badge.ok { color:var(--ok); border-color:#b7e0c0; background:#f0f9f2; }
+  .badge.warn { color:var(--warn); border-color:#f3c2bd; background:#fdf3f2; }
+  pre { margin:4px 0 0; padding:8px 10px; background:#f6f8fa; border-radius:6px; font-size:12px; white-space:pre-wrap; word-break:break-word; }
+  pre.args { color:var(--muted); }
+  .callout { border-radius:10px; padding:10px 14px; margin:0 0 18px; border:1px solid; }
+  .callout.warn { border-color:#f3c2bd; background:#fdf3f2; color:var(--warn); }
+</style>
+</head>
+<body>
+<h1>Agent trace · demo_live</h1>
+<div class="muted">由 <code>aqlab trace</code> 从 AgentResult.to_dict() 生成｜单文件、无外部依赖</div>
+
+<div class="cards">
+<div class="card ok"><div class="k">停止原因</div><div class="v">final</div></div><div class="card ok"><div class="k">步数</div><div class="v">3</div></div><div class="card ok"><div class="k">工具调用</div><div class="v">3 次（3 种）</div></div><div class="card ok"><div class="k">失败的调用</div><div class="v">0</div></div><div class="card ok"><div class="k">未落地数字</div><div class="v">0</div></div>
+</div>
+
+<div class="qa">
+  <div class="label">问题</div>
+  <div>用内置的 ma_cross(10,30) 回测 SYN001，告诉我总收益、Sharpe 与最大回撤。</div>
+</div>
+
+
+
+<div class="qa">
+  <div class="label">最终回答</div>
+  <div>**结论：** SYN001 上 ma_cross(10,30) 回测（含 3bps 手续费 + 2bps 滑点）表现温和，总收益约 9.3%，Sharpe 约 0.35，最大回撤约 -11.1%。
+
+**关键数字（500 根日线，2022-01-03 至 2023-12-01）：**
+- 总收益：9.26%
+- Sharpe：0.3527
+- 最大回撤：-11.05%
+- 年化收益（CAGR）：4.57%
+- 年化波动：16.55%
+- 交易次数：10，胜率 50%，平均每笔 1.63%
+- 年化换手：10.08，持仓暴露 60.2%
+
+证据：describe_data, list_strategies, run_backtest</div>
+</div>
+
+<h2 style="font-size:16px;margin:22px 0 10px;">逐步时间线</h2>
+<div class="step"><div class="step-head">第 1 步</div><div class="assistant">I&#x27;ll first confirm the symbol exists, then run the backtest.</div><div class="tool"><div class="tool-head"><b>describe_data</b><span class="badge ok">成功</span></div><pre class="args">参数：{}</pre><pre class="result">{&quot;ok&quot;: true, &quot;source&quot;: &quot;synthetic&quot;, &quot;seed&quot;: 11, &quot;symbols&quot;: [&quot;SYN001&quot;, &quot;SYN002&quot;, &quot;SYN003&quot;, &quot;SYN004&quot;, &quot;SYN005&quot;, &quot;SYN006&quot;, &quot;SYN007&quot;, &quot;SYN008&quot;, &quot;SYN009&quot;, &quot;SYN010&quot;, &quot;SYN011&quot;, &quot;SYN012&quot;, &quot;SYN013&quot;, &quot;SYN014&quot;, &quot;SYN015&quot;, &quot;SYN016&quot;, &quot;SYN017&quot;, &quot;SYN018&quot;, &quot;SYN019&quot;, &quot;SYN020&quot;, &quot;SYN021&quot;, &quot;SYN022&quot;, &quot;SYN023&quot;, &quot;SYN024&quot;, &quot;SYN025&quot;, &quot;SYN026&quot;, &quot;SYN027&quot;, &quot;SYN028&quot;, &quot;SYN029&quot;, &quot;SYN030&quot;], &quot;bars_per_symbol&quot;: 500, &quot;first_date&quot;: &quot;2022-01-03&quot;, &quot;last_date&quot;: &quot;2023-12-01&quot;}</pre></div><div class="tool"><div class="tool-head"><b>list_strategies</b><span class="badge ok">成功</span></div><pre class="args">参数：{}</pre><pre class="result">{&quot;ok&quot;: true, &quot;strategies&quot;: [{&quot;name&quot;: &quot;buy_and_hold&quot;, &quot;params&quot;: {}, &quot;doc&quot;: &quot;Baseline: always fully invested. Useful as the benchmark in reports.&quot;}, {&quot;name&quot;: &quot;ma_cross&quot;, &quot;params&quot;: {&quot;fast&quot;: 10, &quot;slow&quot;: 30}, &quot;doc&quot;: &quot;Classic dual moving-average crossover (long / flat).&quot;}, {&quot;name&quot;: &quot;mean_reversion&quot;, &quot;params&quot;: {&quot;window&quot;: 20, &quot;z_entry&quot;: -1.5, &quot;z_exit&quot;: 0.0, &quot;max_holding&quot;: 20}, &quot;doc&quot;: &quot;Long when price is oversold vs its rolling mean; exit on reversion.&quot;}, {&quot;name&quot;: &quot;momentum&quot;, &quot;params&quot;: {&quot;lookback&quot;: 60, &quot;trend_window&quot;: 120, &quot;vol_window&quot;: 20, &quot;target_vol&quot;: 0.2}, &quot;doc&quot;: &quot;Long while medium-term momentum is positive *and* price is above its trend SMA.&quot;}]}</pre></div></div><div class="step"><div class="step-head">第 2 步</div><div class="assistant">SYN001 存在，ma_cross 默认参数正是 fast=10, slow=30。现在回测。</div><div class="tool"><div class="tool-head"><b>run_backtest</b><span class="badge ok">成功</span></div><pre class="args">参数：{&quot;symbol&quot;: &quot;SYN001&quot;, &quot;strategy&quot;: &quot;ma_cross&quot;, &quot;params&quot;: {&quot;fast&quot;: 10, &quot;slow&quot;: 30}}</pre><pre class="result">{&quot;ok&quot;: true, &quot;symbol&quot;: &quot;SYN001&quot;, &quot;strategy&quot;: &quot;ma_cross&quot;, &quot;params&quot;: {&quot;fast&quot;: 10, &quot;slow&quot;: 30}, &quot;bars&quot;: 500, &quot;fee_bps&quot;: 3.0, &quot;slippage_bps&quot;: 2.0, &quot;metrics&quot;: {&quot;total_return&quot;: 0.0926, &quot;cagr&quot;: 0.0457, &quot;ann_vol&quot;: 0.1655, &quot;sharpe&quot;: 0.3527, &quot;max_drawdown&quot;: -0.1105, &quot;annual_turnover&quot;: 10.08, &quot;exposure&quot;: 0.602, &quot;trades&quot;: 10, &quot;win_rate_trade&quot;: 0.5, &quot;avg_trade&quot;: 0.0163}}</pre></div></div><div class="step"><div class="step-head">第 3 步</div><div class="assistant">**结论：** SYN001 上 ma_cross(10,30) 回测（含 3bps 手续费 + 2bps 滑点）表现温和，总收益约 9.3%，Sharpe 约 0.35，最大回撤约 -11.1%。
+
+**关键数字（500 根日线，2022-01-03 至 2023-12-01）：**
+- 总收益：9.26%
+- Sharpe：0.3527
+- 最大回撤：-11.05%
+- 年化收益（CAGR）：4.57%
+- 年化波动：16.55%
+- 交易次数：10，胜率 50%，平均每笔 1.63%
+- 年化换手：10.08，持仓暴露 60.2%
+
+证据：describe_data, list_strategies, run_backtest</div></div>
+</body>
+</html>
