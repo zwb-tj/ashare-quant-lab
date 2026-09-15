@@ -9,6 +9,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs" / "ALPHA_RESEARCH.md"
 
@@ -66,3 +68,84 @@ def test_research_scripts_avoid_hardcoded_absolute_paths():
         text = path.read_text(encoding="utf-8")
         assert "kimiwork-z" not in text, f"{path.name} 里写死了本机路径"
         assert "Path(__file__)" in text, f"{path.name} 应基于脚本位置解析路径"
+
+
+# ---- 案例研究的数字一致性 -------------------------------------------------------------
+
+_NUMBER_WORDS = {
+    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight",
+    9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 20: "twenty",
+}
+
+
+def _case_study() -> str:
+    return (ROOT / "docs" / "CASE_STUDY.md").read_text(encoding="utf-8")
+
+
+def test_case_study_reports_the_real_cli_subcommand_and_test_module_counts():
+    """CLI 子命令数与测试模块数必须与仓库实际一致（都曾经过期）。"""
+
+    text = _case_study()
+    modules = len(list((ROOT / "tests").glob("test_*.py")))
+    assert f"{modules} test modules" in text, f"案例研究应写明 {modules} 个测试模块"
+
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from aqlab.cli import build_parser
+
+    commands = len(build_parser()._subparsers._group_actions[0].choices)
+    assert f"{commands} subcommands" in text, f"案例研究应写明 {commands} 个 CLI 子命令"
+
+
+def test_case_study_coverage_figures_match_the_output():
+    """覆盖率、语句数、未覆盖数必须与覆盖率产物一致。
+
+    这里**不嵌套调用 pytest**：在测试内部跑 `pytest --cov` 会重新导入并可能重复执行整个套件
+    （实测直接把测试拖到超时），而且依赖覆盖率插件在子进程里可用。
+    改为读取已有的覆盖率数据文件；没有产物时跳过并说明原因，而不是伪造通过。
+    """
+    import json
+    import subprocess
+    import sys
+
+    text = _case_study()
+    data_file = ROOT / "coverage.json"
+    if not data_file.is_file():
+        # 用 `pytest --cov=aqlab --cov-report=json:coverage.json` 生成后再校验
+        produced = subprocess.run(
+            [sys.executable, "-m", "coverage", "json", "-o", str(data_file)],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if produced.returncode != 0 or not data_file.is_file():
+            pytest.skip("没有覆盖率产物（可先跑 pytest --cov=aqlab --cov-report=json:coverage.json）")
+
+    try:
+        totals = json.loads(data_file.read_text(encoding="utf-8"))["totals"]
+    finally:
+        data_file.unlink(missing_ok=True)
+
+    statements = int(totals["num_statements"])
+    missed = int(totals["missing_lines"])
+    percent = round(float(totals["percent_covered"]))
+
+    assert f"{percent}%" in text, f"案例研究里的覆盖率应为 {percent}%"
+    assert f"{statements:,}" in text, f"案例研究里的语句数应为 {statements:,}"
+    assert str(missed) in text, f"案例研究里的未覆盖语句数应为 {missed}"
+
+
+def test_case_study_rejected_hypothesis_count_is_accurate():
+    """被否假设的条数必须与列表实际条数一致（英文数字词与数字形式都认）。"""
+    text = _case_study()
+    start = text.index("## What was rejected and why")
+    end = text.index("## Engineering")
+    actual = len([line for line in text[start:end].splitlines() if line.startswith("- **")])
+
+    word = _NUMBER_WORDS.get(actual, str(actual))
+    assert f"{word} hypotheses" in text or f"{actual} hypotheses" in text, (
+        f"Overview 应写明被否假设为 {actual} 条（{word} hypotheses）"
+    )
+    # 反向检查：不能出现其它数字词的错误表述
+    for count, other in _NUMBER_WORDS.items():
+        if count != actual and f"{other} hypotheses" in text:
+            raise AssertionError(f"Overview 出现错误的假设条数：{other} hypotheses（实际 {actual}）")

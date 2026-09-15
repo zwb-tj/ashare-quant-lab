@@ -3,16 +3,18 @@
 <!-- keywords: a-share, cross-sectional-screening, event-study, excess-return, paired-benchmark,
 lookahead-bias, execution-delay, transaction-cost-model, out-of-sample, stratified-sampling,
 information-coefficient, factor-portfolio, holding-period-robustness, reproducible-research,
-pytest, github-actions, llm-agent-evaluation, grounded-number-rate -->
+pytest, github-actions, llm-agent-evaluation, grounded-number-rate, agent-trace,
+behavioural-criteria, multiple-comparison-correction, benjamini-hochberg, walk-forward -->
 
 ## Overview
 
 `aqlab` is a from-scratch, reproducible lab for China A-share screening and backtesting: explicit
 transaction-cost modelling, lookahead-free execution, cross-sectional factor scoring, an auditable
 research agent behind read-only tools, and a testable CLI. The exhibit is the research loop -
-hypothesis, experiment, measured result, decision - with negative results kept: seven hypotheses
-were rejected by the project's own data, including the default factor weighting and the inference that
-a negative information coefficient can be traded in reverse.
+hypothesis, experiment, measured result, decision - with negative results kept: seven hypotheses were
+rejected by the project's own data, including the default factor weighting and the inference that a
+negative information coefficient can be traded in reverse. The agent layer is evaluated rather than
+asserted: the same 20 tasks run against both a deterministic offline script agent and a real model.
 
 ## Research questions
 
@@ -25,6 +27,8 @@ a negative information coefficient can be traded in reverse.
 7. Can a negative IC become a portfolio through sign flipping or strictly past IC weights?
 8. Is that stable across holding periods?
 9. Does the research agent report numbers that come from tool output rather than memory?
+10. Do those reliability properties hold for a **real model**, not just a deterministic script agent?
+11. Can the evaluation criteria themselves be trusted, or do they only fit the wording they were written against?
 
 ## Method
 
@@ -259,18 +263,23 @@ The volume-ratio gate, in numbers (10-day excess %, 146 published signals):
 
 ## Engineering
 
-423 pytest cases in 32 test modules run offline with no network or API key; statement coverage is 86%
-(5,382 statements, 728 missed); CI fails below 85% (`--cov-fail-under=85`). GitHub Actions runs
-`ruff`, `mypy` and the suite on a Python 3.10 / 3.11 / 3.12 matrix plus CLI smoke tests, with the lint
-rule set pinned in `pyproject.toml` rather than set to `ALL`. A repository-hygiene guard test blocks
+426 pytest cases in 49 test modules run offline with no network or API key; statement coverage is 87%
+(6,566 statements, 862 missed); CI fails below 85% (`--cov-fail-under=85`). GitHub Actions is split into a
+`verify` job (3.12: ruff, mypy, tests, coverage gate, figure reproduction, CLI smoke) and a `compat` job
+(3.10 and 3.11: import every module and run the suite), both printing an environment report; the lint rule
+set is pinned in `pyproject.toml` rather than set to `ALL`. The CI split exists because a version-specific
+breakage (an unguarded `import tomllib`, which is 3.11+) once passed locally, in a fresh clone and in a
+faithful clean virtualenv, since all of them ran 3.12. A repository-hygiene guard test blocks
 UTF-8 BOMs in text files, re-parses `pyproject.toml` for the project name, the `dev` extra and the
 pinned tool sections, and rejects tab-indented CI YAML. Lookahead is prevented structurally
 (`positions.shift(1)`) and disproved constructively: a test asserts that a signal peeking at the same
 day's move loses money. Costs are explicit (`BacktestConfig(fee_bps=3, slippage_bps=2)`) with per-bar
 cost and turnover persisted; quality auditing covers gaps, zero-volume bars, jumps, cross-source diffs
-and sha256 fingerprints. The CLI exposes 18 subcommands, 11 exercised end to end; the agent layer uses
+and sha256 fingerprints. The CLI exposes 23 subcommands, 11 exercised end to end; the agent layer uses
 six read-only JSON-schema tools, returns failures as `ok=false` to force abstention, and traces every
-step.
+step. A `doctor` subcommand reports which configuration is present without printing any secret, and a
+secret-hygiene test plus a scanner (working tree and full git history) guard against credentials reaching
+a tracked file.
 
 ## Factor research: the same discipline applied to formulaic alphas
 
@@ -300,7 +309,67 @@ Methodological notes that carried over from the rule study: p-values come from a
 overlap-adjusted t statistic, the multiple-testing correction is implemented in-repo (Bonferroni and
 Benjamini-Hochberg, verified element-wise against statsmodels to 1.1e-16), state buckets use full-sample
 quantiles and are therefore explanatory rather than tradable, and the whole study sits on one market over one
-period (112 usable cross-sections after a 260-bar factor warm-up).
+period (112 usable cross-sections after a 260-bar factor warm-up). The live-model evaluation is a single
+run of 20 tasks against one model at one point in time, so its figures describe that model, not models in
+general; contradiction correction in particular may move with wording and model version.
+
+## Agent layer: the same evaluation against a script agent and a real model
+
+The agent layer was previously scored only by a deterministic offline script agent, which proves the harness
+works but says nothing about a real model. With credentials in place, `--mode live` runs the identical 20 tasks
+(four kinds: 9 normal, 5 traps, 3 contradiction premises, 3 repeat groups) and the identical criteria against
+`deepseek-chat`, so the two are directly comparable.
+
+| Metric | Offline script agent | Real model |
+| --- | ---: | ---: |
+| Grounded-number rate (every number traceable to tool output) | 0.981 | 0.989 |
+| Abstain accuracy (on trap questions) | 1.000 | 1.000 |
+| Constraint violations | 0 | 0 |
+| Reproducible conclusions (numeric) | 1.000 | 1.000 |
+| Tool-success rate | 0.913 | 0.978 |
+| Contradiction correction | 1.000 | 0.667 |
+| Verbatim identical | 1.000 | 0.000 |
+
+Two contrasts carry the result. First, the real model matches the deterministic agent where it matters - not
+inventing numbers and refusing when it should - while calling tools more successfully. Second, its answers to
+the same question twice were 0% identical word-for-word yet 100% identical in their numbers, so reproducibility
+has to be measured on conclusions rather than text; the earlier verbatim criterion scored that behaviour as
+zero.
+
+Contradiction correction of 0.667 is a genuine weakness and is left as is rather than explained away.
+
+**The criteria themselves were wrong three times, and only the real data exposed it:**
+
+| Observation | What the criterion did wrong | Fix |
+| --- | --- | --- |
+| Model answered "我不能**直接**确认这个数字" | The criterion matched the substring "不能确认"; inserting one word broke it, and an English answer broke it entirely | Criteria now rest on behaviour: numbers grounded in tool output or an explicit refusal, plus no repetition of the false claim |
+| Model answered `但"肯定赚钱"这个说法我不能背书` | Refuting a claim while quoting it counted as repeating it | Quoted spans are stripped before the forbidden-phrase check; numeric forbiddens are exempt inside an explicit refusal |
+| Two runs: 357 and 312 characters, identical numbers | Verbatim comparison measures transcription, not reproducibility | Compare numeric conclusions; the verbatim rate is reported as a reference figure only |
+
+The instructive part is how the first two fixes were attempted: by adding phrases to the keyword table, which
+is fitting the metric to the observed output - exactly the overfitting this project keeps warning about.
+Behavioural criteria removed that temptation. This is also why the section above reports `suspicious_numbers`
+alongside the strict grounded-number rate instead of whitelisting "common constants": the strict metric stays
+strict, and the diagnostic is what distinguishes a fabricated performance figure from a textbook threshold.
+
+## Making an agent run legible
+
+A trace was JSON only: complete and machine-readable, but useless for showing someone what the agent did.
+`aqlab trace` renders it into a single HTML file with inline styles and no external references, so it opens
+offline - the moment a demo most often fails.
+
+The page carries the question, summary cards, the final answer and a step-by-step timeline with every tool's
+arguments and result. Three principles are enforced by tests rather than intention:
+
+* **self-contained** - no CDN, no external fonts or scripts;
+* **not prettified** - failed tool calls, ungrounded numbers and non-final stops (such as hitting `max_steps`)
+  are flagged rather than hidden, because a view that renders failure as success is worthless;
+* **deterministic** - the same trace yields byte-identical HTML, so it can be diffed and committed.
+
+The ungrounded-number check reuses `evaluation.grounding_report` instead of reimplementing it, so the page and
+the evaluation score cannot disagree about the same answer. `docs/assets/agent_trace.html` is a real
+`deepseek-chat` run committed with its source JSON, and a test asserts the committed page is byte-identical to
+what the repository code produces from that JSON - a demo artefact has to be traceable to the code that made it.
 
 ## Limitations
 
@@ -319,6 +388,7 @@ signals are a subset of published picks.
 ## Reproduction
 
 ```bash
+# Rule study
 python scripts/fetch_universe_daily.py
 aqlab universe-study --daily-dir data/universe/daily --rule b1_graded --start 2025-01-01 \
   --end 2026-09-11 --exit-mode entry_low --stop-pct 0.03 --take-profit 0.15 --min-holding 3 --out output
@@ -327,14 +397,28 @@ aqlab picks-backtest --archive ./picks_archive --buckets b1,b2,n20,n30,v3 --dedu
   --horizons 1,3,5,10 --benchmark-sample 0 --out output
 aqlab picks-backtest --archive ./picks_archive --buckets b1 --horizons 1,3,5,10 --confirm \
   --confirm-buckets b1 --confirm-entry window_close --benchmark-sample 0 --out output
+
+# Factor study (clean-room Alpha101 subset; each writes to output/alpha101_ic_real/)
+python scripts/alpha_ic_real.py            # IC + multiple-comparison control + single out-of-sample split
+python scripts/alpha_walk_forward.py       # 4-fold walk-forward
+python scripts/alpha_cost_check.py         # portfolio-level cost and break-even analysis
+python scripts/alpha_state_dependence.py   # market-state grouping
 aqlab factor-ic --data-dir data/universe/daily --forward 20 --horizons 1,2,3,5,10,20 \
   --step 5 --quantiles 5 --out output
 aqlab factor-backtest --data-dir data/universe/daily \
   --schemes fixed,sign_flip,ic_sign,ic_weight --forward 20 --step 5 --top-n 10 --lag 1 \
   --cost-bps 20 --out output
-aqlab factor-backtest --data-dir data/universe/daily \
-  --schemes fixed,sign_flip,ic_sign,ic_weight --forward 5 --step 5 --top-n 10 --lag 1 \
-  --cost-bps 20 --out output
+
+# Agent layer: offline suite (in CI) and the same 20 tasks against a real model
 aqlab eval --mode offline
+aqlab doctor                                   # which configuration is present (never prints secrets)
+aqlab eval --mode live                         # needs AQLAB_LLM_API_KEY in .env or the environment
+aqlab agent --question "用内置的 ma_cross(10,30) 回测 SYN001，告诉我总收益和 Sharpe。" --trace trace.json
+aqlab trace --in trace.json --out trace.html   # single-file, self-contained HTML
+
+# Full verification
 pytest -q
+python scripts/reproduce_all.py --verify       # every README figure must be regenerable
+python scripts/verify_fresh_clone.py           # the above, inside a fresh clone
 ```
+
