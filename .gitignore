@@ -13,6 +13,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .coverage
+coverage.json
 htmlcov/
 
 # ---- Data & outputs (never commit market data dumps or reports) ----

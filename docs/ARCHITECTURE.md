@@ -54,6 +54,17 @@ factor_ic / factor_strategy）负责"结论站不站得住"；**展示层**（re
 | `charts.py` / `report_html.py` | 净值/回撤/热力图/因子图与**离线自包含** HTML 报告 | 不做统计判定 |
 | `stockdb.py` | 本地行情库接入（SDK 优先、HTTP 降级） | 不缓存业务结论 |
 | `tables.py` | 零依赖 markdown 表格渲染 | 不做数值计算 |
+| `alpha101.py` | clean-room Alpha101 子集：面板 + 时序/截面算子（**方向分离**）、44 个因子、22 个显式跳过 | 不评估有效性、不做组合 |
+| `factor_eval.py` | 公式因子的样本内外切分与多重比较校正（按可用截面划分折，避免预热期吃掉折） | 不做成本、不做择时 |
+| `multiple_testing.py` | Bonferroni 与 Benjamini-Hochberg FDR（无 scipy，p 值用 `math.erfc`） | 不做因子计算 |
+| `walk_forward_folds.py` | 多折滚动验证：扩张训练窗口、方向只由训练段决定、IC 序列一次计算按折切片 | 不做参数搜索 |
+| `state_dependence.py` | 市场状态分组（等权动量/横截面离散/0AMV 波段）下的 IC 对比 | 不产生交易信号 |
+| `alpha_portfolio.py` | 公式因子的组合层：**次日开盘入场**、按实际换手收费、盈亏平衡成本 | 不选因子、不做择时 |
+| `trace_view.py` | `aqlab trace`：把一次 Agent 运行渲染成**单文件自包含** HTML（失败与未落地数字显式标红） | 不做评分 |
+| `env_file.py` | 读取本地 `.env`（无第三方依赖；环境变量优先，空值不覆盖） | 不校验值的语义 |
+| `notify.py` | 飞书 webhook 通知（可选签名） | 不生成内容 |
+| `pipeline.py` | 把数据获取、筛选、回测、报告串成一条可复用流水线 | 不含规则逻辑 |
+| `indicators_extra.py` | 扩展指标（0AMV 活跃市值、砖型图等） | 不做仓位 |
 | `cli.py` | 参数解析与流程编排 | 不含业务逻辑 |
 
 ## 执行时序（关键设计）

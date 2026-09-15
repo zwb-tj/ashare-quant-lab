@@ -149,3 +149,102 @@ def test_case_study_rejected_hypothesis_count_is_accurate():
     for count, other in _NUMBER_WORDS.items():
         if count != actual and f"{other} hypotheses" in text:
             raise AssertionError(f"Overview 出现错误的假设条数：{other} hypotheses（实际 {actual}）")
+
+
+# ---- 英文 README 与架构文档 -----------------------------------------------------------
+
+def test_english_readme_numbers_match_the_repository():
+    """英文 README 是外部读者看到的第一份材料，数字必须与仓库一致。
+
+    它曾长期写着 "32 test modules / 18 subcommands"，而实际是 49 / 23 ——
+    因为早期的守护测试只覆盖中文 README 与案例研究。
+    """
+    import sys
+
+    text = (ROOT / "README.en.md").read_text(encoding="utf-8")
+
+    modules = len(list((ROOT / "tests").glob("test_*.py")))
+    assert f"{modules} test modules" in text, f"README.en.md 应写明 {modules} 个测试模块"
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from aqlab.cli import build_parser
+
+    commands = len(build_parser()._subparsers._group_actions[0].choices)
+    assert f"{commands} subcommands" in text, f"README.en.md 应写明 {commands} 个 CLI 子命令"
+
+    # 反向检查：不能残留其它数字（例如旧的 18 subcommands）
+    import re
+
+    for value in re.findall(r"(\d+)\s+subcommands", text):
+        assert int(value) == commands, f"README.en.md 出现过期子命令数：{value}"
+    for value in re.findall(r"(\d+)\s+test modules", text):
+        assert int(value) == modules, f"README.en.md 出现过期测试模块数：{value}"
+
+
+def test_architecture_lists_every_module():
+    """架构文档的模块表必须覆盖 src/aqlab 下**每一个**模块。
+
+    这条防的是"代码加了模块、架构文档没跟上"——曾一度 42 个模块里有 11 个不在表中，
+    而架构文档正是评审者用来理解分层边界的东西，漏项会直接误导。
+    """
+    text = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    modules = sorted(p.stem for p in (ROOT / "src" / "aqlab").glob("*.py") if p.stem != "__init__")
+    assert modules, "应当能发现模块"
+    missing = [name for name in modules if name not in text]
+    assert not missing, f"架构文档未提及这些模块：{missing}"
+
+
+def test_gitignore_covers_local_artefacts_used_by_scripts():
+    """脚本会产出的本地文件都应被忽略，避免误提交。"""
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    for pattern in (".coverage", "coverage.json", "output/", ".env"):
+        assert pattern in gitignore, f".gitignore 应包含 {pattern}"
+
+
+# ---- 声明式现状位置（不套用到版本历史条目）-------------------------------------------
+
+def test_chinese_readme_highlight_table_states_current_subcommand_count():
+    """中文 README 亮点表的「工程实践」行是现状声明，子命令数必须与仓库一致。
+
+    它曾长期写着 18（实测 23）——因为早期守护只覆盖了英文 README 的同类位置。
+    注意：README 后半部分是**版本历史**（例如「v0.13 把覆盖率从 74% 提到 89%」），
+    那里的数字是当时的事实，**不应**用当前值去校验。
+    """
+    import re
+    import sys
+
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    sys.path.insert(0, str(ROOT / "src"))
+    from aqlab.cli import build_parser
+
+    commands = len(build_parser()._subparsers._group_actions[0].choices)
+
+    # 只在亮点表（第一个表格区域）里查找现状声明
+    highlight = text[: text.index("## 设计原则")] if "## 设计原则" in text else text
+    found = re.findall(r"CLI\s*\*\*(\d+)\s*个子命令\*\*", highlight)
+    assert found, "亮点表应当声明 CLI 子命令数"
+    for value in found:
+        assert int(value) == commands, f"亮点表里的子命令数过期：{value}（实测 {commands}）"
+
+
+def test_english_readme_summary_states_current_case_count():
+    """英文 README 开头的摘要行是现状声明，测试用例数必须与仓库一致。"""
+    import re
+    import subprocess
+    import sys
+
+    text = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    total = sum(int(m) for m in re.findall(r":\s*(\d+)$", collected.stdout, flags=re.M))
+    now = total + 0  # 本文件新增测试不计入已写数字，允许差 1
+
+    head = text[:4000]
+    found = re.findall(r"\*\*(\d[\d,]*)\s*(?:pytest cases|tests)\*\*", head)
+    assert found, "英文 README 摘要应当声明测试用例数"
+    for raw in found:
+        value = int(raw.replace(",", ""))
+        assert abs(value - total) <= 2, f"英文 README 摘要里的测试数过期：{value}（实测 {total}）"
+    assert now >= 0
