@@ -1,0 +1,33 @@
+# Normalise line endings so the working tree, the index and every platform agree.
+#
+# Without this the index stores LF while a Windows checkout materialises CRLF, so `git add`
+# warns on dozens of files and a cross-platform commit can show a whole file as changed when
+# only the line endings differ.
+* text=auto eol=lf
+
+# Explicitly text: always stored as LF in the repository.
+*.py        text eol=lf
+*.md        text eol=lf
+*.toml      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.cfg       text eol=lf
+*.txt       text eol=lf
+*.example   text eol=lf
+LICENSE     text eol=lf
+.gitignore  text eol=lf
+
+# Binary: never convert, and tell diff not to try.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.webp      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+
+# Generated artefacts that should never show up in a diff.
+.coverage     binary
+coverage.json binary

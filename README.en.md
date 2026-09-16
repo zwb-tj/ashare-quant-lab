@@ -39,7 +39,7 @@ git clone https://github.com/zwb-tj/ashare-quant-lab.git
 cd ashare-quant-lab
 pip install -e ".[dev]"        # about 29 seconds
 
-pytest -q                      # 430 cases, fully offline, no network and no API key (about 3 minutes)
+pytest -q                      # 432 cases, fully offline, no network and no API key (about 3 minutes)
 
 # one zero-dependency research command (synthetic data, about 6 seconds)
 python -m aqlab.cli factor-ic --symbols 30 --days 500 --out output
@@ -56,7 +56,7 @@ python scripts/reproduce_all.py --verify   # regenerate 8 figures and compare wi
 
 | Area | Concrete numbers / facts |
 | --- | --- |
-| **Engineering quality** | **430 tests** across 49 modules, fully offline｜**87% coverage**, CI gate `--cov-fail-under=85`｜**ruff + mypy clean** and wired into CI｜Python **3.10 / 3.11 / 3.12** matrix |
+| **Engineering quality** | **432 tests** across 49 modules, fully offline｜**87% coverage**, CI gate `--cov-fail-under=85`｜**ruff + mypy clean** and wired into CI｜Python **3.10 / 3.11 / 3.12** matrix |
 | **Real market scale** | Local LevelDB quote store, **5,424 symbols** (daily from 2000, minute bars from 2025-01)｜a single full-market study covers **58,682 trades** |
 | **Statistical rigour** | Every conclusion carries a **sample size + same-period benchmark excess + Welch t statistic**; the benchmark is an equal-weight market index over the same entry date and holding period｜key findings are checked across **24 parameter/caliber combinations** |
 | **Falsifiable conclusions** | **Several hypotheses were rejected by the project's own data** and written up: the screening rule shows -0.40 ~ -4.23% excess over 334 published records (13 of 24 cells significantly negative); structural exits compress holding to 3-5 days and turn excess negative; all five portfolio weighting methods lose to equal weights |
@@ -314,7 +314,7 @@ ashare-quant-lab/
 │   ├── sweep.py           # parameter sweep: event study + rolling window + portfolio in one grid comparison
 │   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1 (run the current-day job), register_task.ps1 (register the 17:30 scheduled task)
-├── tests/                 # 430 cases: data, indicators, backtest (incl. the no-lookahead contradiction), tools, agent, evaluation, rules, brick chart, pipeline, notification, position/exit, event study, rolling window, portfolio layer, parameter sweep
+├── tests/                 # 432 cases: data, indicators, backtest (incl. the no-lookahead contradiction), tools, agent, evaluation, rules, brick chart, pipeline, notification, position/exit, event study, rolling window, portfolio layer, parameter sweep
 ├── examples/              # offline demo scripts + example reports
 ├── docs/                  # architecture notes and roadmap
 └── .github/workflows/     # CI: pytest across multiple Python versions

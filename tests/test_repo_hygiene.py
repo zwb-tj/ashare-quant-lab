@@ -51,3 +51,45 @@ def test_workflow_files_are_plain_yaml_without_tabs():
         text = path.read_text(encoding="utf-8")
         assert "\t" not in text, f"{path.name} 里出现了 Tab 缩进"
         assert text.startswith("name:"), f"{path.name} 应以 name: 开头"
+
+
+def test_gitattributes_pins_line_endings_and_marks_binaries():
+    """.gitattributes 必须存在，并把文本文件的换行符钉成 LF、把图片标为二进制。
+
+    没有它时，Windows 上 48 个文件会在 `git add` 时打印 "LF will be replaced by CRLF"，
+    而跨平台协作会让"只改了行尾"的提交看起来像整文件重写。图片若被当文本处理，
+    行尾转换会直接损坏文件。
+    """
+    attrs = ROOT / ".gitattributes"
+    assert attrs.is_file(), "仓库应当有 .gitattributes"
+    text = attrs.read_text(encoding="utf-8")
+
+    # 默认把所有文本按 LF 存储
+    assert "* text=auto eol=lf" in text, "应当声明默认 `* text=auto eol=lf`"
+    # 关键文本类型显式钉住
+    for pattern in ("*.py", "*.md", "*.toml", "*.yml"):
+        assert f"{pattern}" in text, f"应当在 .gitattributes 中声明 {pattern}"
+    # 二进制类型必须标记，否则行尾转换会损坏文件
+    for pattern in ("*.png", "*.jpg", "*.webp"):
+        assert f"{pattern}" in text, f"应当把 {pattern} 标为 binary"
+    assert "binary" in text
+
+
+def test_no_text_file_in_the_index_uses_crlf():
+    """索引里不应存在以 CRLF 存储的文本文件。
+
+    索引（`git ls-files --eol`）显示 i/crlf 说明某个文本文件被以 CRLF 提交了，
+    在 Linux/macOS 上会表现为多余的回车符。这条用 git 自身的事实来判定。
+    """
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "ls-files", "--eol"], cwd=ROOT,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    offenders = [
+        line.split("\t", 1)[-1].strip()
+        for line in result.stdout.splitlines()
+        if line.startswith("i/crlf")
+    ]
+    assert not offenders, f"索引里有以 CRLF 提交的文本文件：{offenders[:10]}"
