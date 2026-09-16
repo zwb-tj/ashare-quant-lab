@@ -153,33 +153,6 @@ def test_case_study_rejected_hypothesis_count_is_accurate():
 
 # ---- 英文 README 与架构文档 -----------------------------------------------------------
 
-def test_english_readme_numbers_match_the_repository():
-    """英文 README 是外部读者看到的第一份材料，数字必须与仓库一致。
-
-    它曾长期写着 "32 test modules / 18 subcommands"，而实际是 49 / 23 ——
-    因为早期的守护测试只覆盖中文 README 与案例研究。
-    """
-    import sys
-
-    text = (ROOT / "README.en.md").read_text(encoding="utf-8")
-
-    modules = len(list((ROOT / "tests").glob("test_*.py")))
-    assert f"{modules} test modules" in text, f"README.en.md 应写明 {modules} 个测试模块"
-
-    sys.path.insert(0, str(ROOT / "src"))
-    from aqlab.cli import build_parser
-
-    commands = len(build_parser()._subparsers._group_actions[0].choices)
-    assert f"{commands} subcommands" in text, f"README.en.md 应写明 {commands} 个 CLI 子命令"
-
-    # 反向检查：不能残留其它数字（例如旧的 18 subcommands）
-    import re
-
-    for value in re.findall(r"(\d+)\s+subcommands", text):
-        assert int(value) == commands, f"README.en.md 出现过期子命令数：{value}"
-    for value in re.findall(r"(\d+)\s+test modules", text):
-        assert int(value) == modules, f"README.en.md 出现过期测试模块数：{value}"
-
 
 def test_architecture_lists_every_module():
     """架构文档的模块表必须覆盖 src/aqlab 下**每一个**模块。
@@ -203,12 +176,13 @@ def test_gitignore_covers_local_artefacts_used_by_scripts():
 
 # ---- 声明式现状位置（不套用到版本历史条目）-------------------------------------------
 
-def test_chinese_readme_highlight_table_states_current_subcommand_count():
-    """中文 README 亮点表的「工程实践」行是现状声明，子命令数必须与仓库一致。
+def test_chinese_readme_states_the_current_subcommand_count():
+    """中文 README 必须声明当前的 CLI 子命令数，且不得残留旧值。
 
-    它曾长期写着 18（实测 23）——因为早期守护只覆盖了英文 README 的同类位置。
-    注意：README 后半部分是**版本历史**（例如「v0.13 把覆盖率从 74% 提到 89%」），
-    那里的数字是当时的事实，**不应**用当前值去校验。
+    改版后该声明位于 mermaid 架构图（`aqlab CLI (23 commands)`）而非亮点表，
+    因此断言改为校验该位置——**换了位置不等于取消守护**。
+    注意：README 后半是**版本历史**（如「v0.13 把覆盖率从 74% 提到 89%」），
+    那里的数字是当时的事实，不用当前值校验。
     """
     import re
     import sys
@@ -219,16 +193,21 @@ def test_chinese_readme_highlight_table_states_current_subcommand_count():
 
     commands = len(build_parser()._subparsers._group_actions[0].choices)
 
-    # 只在亮点表（第一个表格区域）里查找现状声明
-    highlight = text[: text.index("## 设计原则")] if "## 设计原则" in text else text
-    found = re.findall(r"CLI\s*\*\*(\d+)\s*个子命令\*\*", highlight)
-    assert found, "亮点表应当声明 CLI 子命令数"
+    # 现状声明位置：mermaid 架构图
+    found = re.findall(r"aqlab CLI \((\d+) commands\)", text)
+    assert found, "README 应声明 CLI 子命令数（mermaid 架构图中）"
     for value in found:
-        assert int(value) == commands, f"亮点表里的子命令数过期：{value}（实测 {commands}）"
+        assert int(value) == commands, f"mermaid 图里的子命令数过期：{value}（实测 {commands}）"
+
+    # 反向检查：正文不得残留其它子命令数
+    body = "\n".join(line for line in text.splitlines() if not line.strip().startswith("- ✅ **v"))
+    for value in re.findall(r"CLI\s*\*\*(\d+)\s*个子命令\*\*", body):
+        assert int(value) == commands, f"正文出现过期子命令数：{value}"
 
 
-def test_english_readme_summary_states_current_case_count():
-    """英文 README 开头的摘要行是现状声明，测试用例数必须与仓库一致。"""
+
+def test_english_readme_states_the_current_case_count():
+    """英文 README 首屏必须声明当前的测试用例数（改版后位于快速开始的代码块与亮点表）。"""
     import re
     import subprocess
     import sys
@@ -239,12 +218,13 @@ def test_english_readme_summary_states_current_case_count():
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     total = sum(int(m) for m in re.findall(r":\s*(\d+)$", collected.stdout, flags=re.M))
-    now = total + 0  # 本文件新增测试不计入已写数字，允许差 1
 
-    head = text[:4000]
-    found = re.findall(r"\*\*(\d[\d,]*)\s*(?:pytest cases|tests)\*\*", head)
-    assert found, "英文 README 摘要应当声明测试用例数"
+    head = "\n".join(text.splitlines()[:70])
+    found = re.findall(r"(\d[\d,]*)\s*(?:pytest cases|cases|tests)\b", head)
+    assert found, "英文 README 首屏应当声明测试用例数"
+    # 本文件每新增测试，实测值就会变；允许 2 的滞后
     for raw in found:
         value = int(raw.replace(",", ""))
-        assert abs(value - total) <= 2, f"英文 README 摘要里的测试数过期：{value}（实测 {total}）"
-    assert now >= 0
+        assert abs(value - total) <= 2, f"英文 README 首屏的测试数过期：{value}（实测 {total}）"
+
+

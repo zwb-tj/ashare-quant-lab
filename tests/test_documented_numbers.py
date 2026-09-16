@@ -11,6 +11,7 @@
 因此测试在缺少产物时会跳过并说明原因——而不是伪造通过。
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -120,11 +121,13 @@ def test_documented_evidence_chain_matches_the_outputs():
         "net_excess_t_above_2": int((costs["net_excess_t"] > 2).sum()),
     }
 
-    # 文档中必须出现的数字（速览与自述文档）
-    docs = {
-        ROOT / "docs" / "ALPHA_RESEARCH.md",
-        ROOT.parent.parent / "work" / "找工作" / "项目速览-ashare-quant-lab.md",
-    }
+    # 仓库内的文档必须包含证据链数字。
+    # 另有一份仓库外的「项目速览」一页纸也用同样的数字，但它不在版本控制里，
+    # 因此通过环境变量 `AQLAB_BRIEF` 显式指定才校验（默认跳过，避免把个人目录写死进仓库）。
+    docs = [ROOT / "docs" / "ALPHA_RESEARCH.md"]
+    external_brief = os.environ.get("AQLAB_BRIEF")
+    if external_brief:
+        docs.append(Path(external_brief))
     for path in docs:
         if not path.exists():
             continue
