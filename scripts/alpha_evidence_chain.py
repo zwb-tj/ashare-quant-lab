@@ -69,6 +69,29 @@ def build_manifest() -> dict[str, Any]:
 
     skipped = sorted(SKIPPED)
 
+    # 各道闸门覆盖的 (因子, 持有期) 组合集合。**它们不是嵌套的**：
+    # 多重比较校正与样本外跑遍了 {1,5,20} 三个持有期，而多折 walk-forward 只跑 {5,20}；
+    # 成本闸门（修正后）检验的是「样本外存活 ∪ 多折稳健」的并集。
+    # 所以"41→35→11→12→3"这条链里 11→12 会**变大**，而多折稳健集与成本存活集几乎不相交。
+    # 把这些关系写进清单，是为了让"漏斗"这个错误读法无法再被写进文档而不被发现。
+    def pairs(frame: pd.DataFrame, mask: pd.Series, horizon_column: str) -> set[tuple[str, int]]:
+        part = frame[mask]
+        return {
+            (str(name), int(hold))
+            for name, hold in zip(part["factor"], part[horizon_column], strict=True)
+        }
+
+    bh = pairs(corrected, corrected["significant_bh"].astype(bool), "horizon")
+    oos = pairs(isoos, isoos["survives_oos"].astype(bool), "horizon")
+    robust = pairs(walkforward, walkforward["robust"].astype(bool), "horizon")
+    costed = pairs(costs, costs["net_excess_t"] > 2, "hold_days")
+    # 多折稳健的那个 (因子, 持有期) 是否**恰好**也被成本闸门检验过（按组合配对，不能只按因子）
+    cost_pairs = {
+        (str(name), int(hold))
+        for name, hold in zip(costs["factor"], costs["hold_days"], strict=True)
+    }
+    robust_costed = robust & cost_pairs
+
     return {
         "_note": (
             "由 scripts/alpha_evidence_chain.py --write 生成；真实产物的数字以此为准。"
@@ -98,6 +121,24 @@ def build_manifest() -> dict[str, Any]:
             "walkforward_robust": int(walkforward["robust"].sum()),
             "costed_combinations": len(costs),
             "net_excess_t_above_2": int((costs["net_excess_t"] > 2).sum()),
+        },
+        "gate_overlap": {
+            "_note": (
+                "各道闸门覆盖的组合集合不嵌套，所以证据链不是层层收紧的漏斗。"
+                "这里记下真实关系，任何把这些数字写成一条单向箭头链的表述都与产物不符。"
+            ),
+            "horizons_tested": {
+                "multiple_testing": sorted(int(value) for value in corrected["horizon"].unique()),
+                "out_of_sample": sorted(int(value) for value in isoos["horizon"].unique()),
+                "walk_forward": sorted(int(value) for value in walkforward["horizon"].unique()),
+                "cost_check": sorted(int(value) for value in costs["hold_days"].unique()),
+            },
+            "bh_and_oos": len(bh & oos),
+            "oos_and_robust": len(oos & robust),
+            "robust_and_costed": len(robust & costed),
+            "robust_with_cost_data": len(robust & robust_costed),
+            "robust_missing_cost_data": sorted(f"{name}/{hold}" for name, hold in robust - robust_costed),
+            "all_four_gates": len(bh & oos & robust & costed),
         },
         "walk_forward": {
             "folds": sorted(int(value) for value in detail["fold"].unique()),

@@ -56,19 +56,18 @@ def main(argv: list[str] | None = None) -> int:
     check(f"测试用例数 = {total}", total >= 380, f"实际 {total}")
 
     out_real = ROOT / "output" / "alpha101_ic_real"
-    out = ROOT / "output" / "alpha101_ic"
-    if (out_real / "corrected.csv").exists() and (out / "walk_forward_summary.csv").exists():
+    if (out_real / "corrected.csv").exists() and (out_real / "walk_forward_summary.csv").exists():
         corrected = pd.read_csv(out_real / "corrected.csv")
         check("全样本组合 111", len(corrected) == 111, f"实际 {len(corrected)}")
         check("不校正显著 41", int(corrected["significant_raw"].sum()) == 41)
         check("BH 显著 35", int(corrected["significant_bh"].sum()) == 35)
         check("Bonferroni 显著 28", int(corrected["significant_bonferroni"].sum()) == 28)
 
-        wf = pd.read_csv(out / "walk_forward_summary.csv")
+        wf = pd.read_csv(out_real / "walk_forward_summary.csv")
         check("多折组合 74", len(wf) == 74, f"实际 {len(wf)}")
         check("多折稳健 12", int(wf["robust"].sum()) == 12, f"实际 {int(wf['robust'].sum())}")
 
-        detail = pd.read_csv(out / "walk_forward_detail.csv")
+        detail = pd.read_csv(out_real / "walk_forward_detail.csv")
         fold4 = detail[detail["fold"] == 4]
         check(
             "折 4 被选中 20 且存活 0",
@@ -76,16 +75,16 @@ def main(argv: list[str] | None = None) -> int:
             f"选中 {int(fold4['selected'].sum())}｜存活 {int(fold4['survived'].sum())}",
         )
 
-        costs = pd.read_csv(out / "alpha_portfolio_costs.csv")
-        check("成本组合 33", len(costs) == 33, f"实际 {len(costs)}")
+        costs = pd.read_csv(out_real / "alpha_portfolio_costs.csv")
+        check("成本组合 18（前几道闸门并集）", len(costs) == 18, f"实际 {len(costs)}")
         check("净超额 t>2 为 3", int((costs["net_excess_t"] > 2).sum()) == 3)
         check(
-            "盈亏平衡成本中位数 23.4bps",
-            abs(float(costs["break_even_bps"].median()) - 23.4) < 0.5,
+            "盈亏平衡成本中位数 26.4bps",
+            abs(float(costs["break_even_bps"].median()) - 26.4) < 0.05,
             f"实际 {float(costs['break_even_bps'].median()):.1f}",
         )
 
-        state = pd.read_csv(out / "state_regime_bucket.csv")
+        state = pd.read_csv(out_real / "state_regime_bucket.csv")
         better = 0
         for _factor, group in state.groupby("factor"):
             row = group.set_index("state")

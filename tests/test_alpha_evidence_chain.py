@@ -2,7 +2,7 @@
 """把因子证据链钉在一份**可提交**的清单上（不依赖 `output/`）。
 
 落差在哪：`docs/ALPHA_RESEARCH.md` / README / `docs/CASE_STUDY.md` 的核心数字
-（41 → 35 → 28、11/16、12/74、3/33）来自真实全市场产物，而产物写在 gitignored 的
+（41 → 35 → 28、11/16、12/74、3/18）来自真实全市场产物，而产物写在 gitignored 的
 `output/` 下。原先校验它们的断言都挂在"产物存在"的前提后面，于是在**全新克隆与 CI 里
 整体静默跳过** —— 文档最核心的声明，恰好是最需要被检查的地方没人检查。
 
@@ -137,7 +137,7 @@ def test_alpha_research_doc_matches_the_manifest_chain(manifest: dict) -> None:
     )
 
     costs = manifest["cost_check"]
-    assert f"| **{chain['net_excess_t_above_2']}** |" in text
+    assert f"| **净超额 t > 2** | **{chain['net_excess_t_above_2']} / {chain['costed_combinations']}** |" in text
     assert f"| 平均换手 | **{costs['mean_turnover']}** |" in text
     assert f"| 盈亏平衡成本中位数 | **{costs['median_break_even_bps']} bps** |" in text
 
@@ -153,8 +153,9 @@ def test_chinese_readme_chain_matches_the_manifest(manifest: dict) -> None:
     assert f"Bonferroni {chain['bonferroni_significant']}" in text
     assert f"样本外存活 {chain['out_of_sample_survivors']}/{chain['in_sample_significant']}" in text
     assert (
-        f"净超额 t>2 仅 **{chain['net_excess_t_above_2']}/{chain['costed_combinations']}**" in text
+        f"扣 20bps 成本后净超额 t>2 剩 **{chain['net_excess_t_above_2']}/{chain['costed_combinations']}**" in text
     ), "中文 README 亮点表的最后一环数字过期"
+    assert f"四者交集 **{manifest['gate_overlap']['all_four_gates']} 个**" in text
 
 
 def test_english_readme_chain_matches_the_manifest(manifest: dict) -> None:
@@ -169,24 +170,59 @@ def test_english_readme_chain_matches_the_manifest(manifest: dict) -> None:
 
 def test_case_study_chain_matches_the_manifest(manifest: dict) -> None:
     chain = manifest["evidence_chain"]
+    overlap = manifest["gate_overlap"]
     wf = manifest["walk_forward"]
     costs = manifest["cost_check"]
     text = _doc(CASE_STUDY)
 
-    assert f"({chain['combinations']} factor-horizon cells) | {chain['raw_significant']} |" in text
-    assert f"| After Benjamini-Hochberg FDR control | {chain['bh_significant']} |" in text
-    assert f"| After Bonferroni | {chain['bonferroni_significant']} |" in text
+    assert f"| Raw IC significant at 5%, no correction ({chain['combinations']} factor-horizon cells) |" in text
+    assert f"| Multiple-comparison control (BH-FDR) | {chain['combinations']} | 1 / 5 / 20 | {chain['bh_significant']} |" in text
+    assert f"| Bonferroni | {chain['combinations']} | 1 / 5 / 20 | {chain['bonferroni_significant']} |" in text
     assert (
-        f"single 50/50 split) | {chain['out_of_sample_survivors']} of {chain['in_sample_significant']} |" in text
+        f"single 50/50 split) | {chain['combinations']} | 1 / 5 / 20 | "
+        f"{chain['out_of_sample_survivors']} of {chain['in_sample_significant']} |" in text
     )
     assert (
-        f">=2 folds selected, >=60% survived) | {chain['walkforward_robust']} of "
-        f"{chain['walkforward_combinations']} |" in text
+        f">=2 folds selected, >=60% survived) | {chain['walkforward_combinations']} | "
+        f"**5 / 20 only** | {chain['walkforward_robust']} |" in text
     )
-    assert f"net-excess t > 2 | {chain['net_excess_t_above_2']} of {chain['costed_combinations']} |" in text
+    assert (
+        f"net-excess t > 2 | {chain['costed_combinations']} (out-of-sample survivors ∪ walk-forward robust) "
+        f"| 1 / 5 / 20 | {chain['net_excess_t_above_2']} |" in text
+    )
+    assert f"Taking all four gates together leaves **{overlap['all_four_gates']}** combinations" in text
     assert f"median break-even cost {costs['median_break_even_bps']} bps" in text
     assert f"only {chain['net_excess_t_above_2']} of {chain['costed_combinations']} clear" in text
+    assert "each layer removed candidates" not in text, "各闸门候选集不嵌套，不能写成层层收紧"
     assert wf["fold4_survived"] == 0, "折 4 全灭是清单的核心事实，测试依赖它"
+
+
+def test_gate_overlap_is_recorded_and_not_described_as_a_funnel(manifest: dict) -> None:
+    """证据链不是层层收紧的漏斗——这条必须被钉住，否则又会漂回箭头叙述。
+
+    真实关系（来自产物）：多折只跑 5/20 日持有期，成本闸门检验前两者的并集，
+    所以链条在 11 → 12 处会**变大**，且四个闸门的交集是 0。
+    """
+    overlap = manifest["gate_overlap"]
+    assert overlap["all_four_gates"] == 0
+    assert overlap["robust_and_costed"] == 0, "多折稳健的组合没有一个能扣成本后保住 t>2"
+    assert overlap["robust_with_cost_data"] == manifest["evidence_chain"]["walkforward_robust"]
+    assert overlap["robust_missing_cost_data"] == []
+    assert overlap["bh_and_oos"] == manifest["evidence_chain"]["out_of_sample_survivors"]
+    assert overlap["horizons_tested"]["walk_forward"] == [5, 20], "多折不跑 1 日持有期"
+    assert 1 in overlap["horizons_tested"]["cost_check"]
+
+    for path in (ALPHA_DOC, README_ZH, README_EN, CASE_STUDY):
+        text = _doc(path)
+        for banned in ("证据链层层收紧", "the evidence chain tightens layer by layer"):
+            assert banned not in text, f"{path.name} 仍把各闸门写成漏斗：{banned}"
+
+    # 光禁止旧措辞不够——还得要求文档**正面说清**它们不嵌套，否则删掉一句话就能让守卫变绿。
+    assert "不是嵌套" in _doc(ALPHA_DOC) and "不是一条层层收紧的漏斗" in _doc(ALPHA_DOC)
+    assert "取交集，剩下的组合是 **0 个**" in _doc(ALPHA_DOC)
+    assert "不是层层收紧的漏斗" in _doc(README_ZH) and "交集是 **0 个**" in _doc(README_ZH)
+    assert "not a funnel" in _doc(README_EN) and "intersection of all four gates is **0**" in _doc(README_EN)
+    assert "do **not** form a funnel" in _doc(CASE_STUDY)
 
 
 # ---- 清单不许静默失联 ---------------------------------------------------------------

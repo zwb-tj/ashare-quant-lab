@@ -36,46 +36,78 @@ panel = build_panel(frames)
 values = compute_alphas(panel, min_history=260)
 print(f"已算因子 {len(values)} 个｜用时 {time.time() - start:.0f}s", flush=True)
 
-# 上一轮样本外存活 / 样本内显著的因子（来自 v0.26 的真实结果）
-candidates = [
-    "alpha_006", "alpha_044", "alpha_003", "alpha_026", "alpha_012",
-    "alpha_013", "alpha_016", "alpha_008", "alpha_001", "alpha_005", "alpha_054",
-]
+# 成本闸门检验的必须是**前面那些闸门放行的组合**，而不是另挑一份因子清单。
+# 旧版这里写死了 11 个因子 × 3 个持有期（33 个组合），与 walk-forward 的稳健集
+# （12 个组合，含 alpha_015/alpha_050/alpha_055 而恰好没有别的）没有关系——于是
+# "证据链"其实在每一道关口换了一批候选，11（样本外）→12（多折稳健）→3（扣成本）
+# 这条箭头链里，第三节的 3 个组合与第二节的 12 个交集为空。那是个假漏斗。
+# 现在改成从上一道闸门的产物派生候选集：样本外存活 ∪ 多折稳健。
+REFERENCE_DIR = ROOT / "output" / "alpha101_ic_real"
+
+
+def candidate_pairs() -> list[tuple[str, int]]:
+    """从样本外与多折产物派生要检验的 (因子, 持有期) 组合。"""
+    isoos_path = REFERENCE_DIR / "is_oos.csv"
+    forward_path = REFERENCE_DIR / "walk_forward_summary.csv"
+    for path in (isoos_path, forward_path):
+        if not path.is_file():
+            raise SystemExit(
+                f"缺少上一道闸门的产物：{path}\n"
+                "成本闸门只检验前面放行的组合，所以请先运行：\n"
+                "  python scripts/alpha_ic_real.py\n"
+                "  python scripts/alpha_walk_forward.py"
+            )
+
+    isoos = pd.read_csv(isoos_path)
+    forward = pd.read_csv(forward_path)
+    surviving = {
+        (str(row.factor), int(row.horizon))
+        for row in isoos[isoos["survives_oos"]].itertuples(index=False)
+    }
+    robust = {
+        (str(row.factor), int(row.horizon))
+        for row in forward[forward["robust"]].itertuples(index=False)
+    }
+    pairs = sorted(surviving | robust)
+    print(f"上一道闸门放行：样本外存活 {len(surviving)}｜多折稳健 {len(robust)}｜并集 {len(pairs)}", flush=True)
+    return pairs
+
 
 rows: list[dict] = []
 break_even: list[dict] = []
-for name in candidates:
+for name, hold in candidate_pairs():
     if name not in values:
+        print(f"  跳过 {name}（本次未算出该因子）", flush=True)
         continue
     factor = values[name]
-    for hold in (1, 5, 20):
-        config = AlphaPortfolioConfig(
-            top_n=20,
-            hold_days=hold,
-            cost_bps=20.0,
-            min_history=260,
-            direction="ic_sign",     # 方向由样本内 IC 符号决定（不允许事后挑方向）
-        )
-        outcome = run_alpha_portfolio(factor, panel, config)
-        summary = outcome["summary"]
-        if not summary.get("periods"):
-            continue
-        be = break_even_cost_bps(factor, panel, config)
-        rows.append(
-            {
-                "factor": name,
-                "hold_days": hold,
-                "direction": summary["direction"],
-                "periods": summary["periods"],
-                "mean_gross_excess": summary.get("mean_gross_excess"),
-                "mean_net_excess": summary.get("mean_net_excess"),
-                "net_excess_t": summary.get("net_excess_t"),
-                "mean_turnover": summary.get("mean_turnover"),
-                "excess_win_rate": summary.get("excess_win_rate"),
-                "break_even_bps": be,
-            }
-        )
-    print(f"  {name} 完成（{time.time() - start:.0f}s）", flush=True)
+    config = AlphaPortfolioConfig(
+        top_n=20,
+        hold_days=hold,
+        cost_bps=20.0,
+        min_history=260,
+        direction="ic_sign",     # 方向由样本内 IC 符号决定（不允许事后挑方向）
+    )
+    outcome = run_alpha_portfolio(factor, panel, config)
+    summary = outcome["summary"]
+    if not summary.get("periods"):
+        print(f"  跳过 {name} / 持有 {hold} 日（无有效期数）", flush=True)
+        continue
+    be = break_even_cost_bps(factor, panel, config)
+    rows.append(
+        {
+            "factor": name,
+            "hold_days": hold,
+            "direction": summary["direction"],
+            "periods": summary["periods"],
+            "mean_gross_excess": summary.get("mean_gross_excess"),
+            "mean_net_excess": summary.get("mean_net_excess"),
+            "net_excess_t": summary.get("net_excess_t"),
+            "mean_turnover": summary.get("mean_turnover"),
+            "excess_win_rate": summary.get("excess_win_rate"),
+            "break_even_bps": be,
+        }
+    )
+    print(f"  {name} / 持有 {hold} 日 完成（{time.time() - start:.0f}s）", flush=True)
 
 table = pd.DataFrame(rows)
 out_dir = ROOT / "output" / "alpha101_ic_real"

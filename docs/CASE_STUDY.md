@@ -263,7 +263,7 @@ The volume-ratio gate, in numbers (10-day excess %, 146 published signals):
 
 ## Engineering
 
-461 pytest cases in 52 test modules run offline with no network or API key; statement coverage is 87%
+462 pytest cases in 52 test modules run offline with no network or API key; statement coverage is 87%
 (6,588 statements, 861 missed); CI fails below 85% (`--cov-fail-under=85`). GitHub Actions is split into a
 `verify` job (3.12: ruff, mypy, tests, coverage gate, figure reproduction, CLI smoke) and a `compat` job
 (3.10 and 3.11: import every module and run the suite), both printing an environment report; the lint rule
@@ -285,16 +285,22 @@ a tracked file.
 
 The screening-rule work above was extended to a clean-room Alpha101 subset (44 factors implemented, 22 skipped
 with the missing input named, since they need industry or market-cap data that is not available locally). The
-same evidence chain was applied, and each layer removed candidates:
+same four gates were applied — but they do **not** form a funnel, because each gate tests a different candidate
+set:
 
-| Layer | Surviving candidates |
-| --- | ---: |
-| Raw IC significant at 5% (111 factor-horizon cells) | 41 |
-| After Benjamini-Hochberg FDR control | 35 |
-| After Bonferroni | 28 |
-| In-sample picks surviving out of sample (single 50/50 split) | 11 of 16 |
-| Robust across 4 walk-forward folds (>=2 folds selected, >=60% survived) | 12 of 74 |
-| Net of 20 bps round-trip cost, net-excess t > 2 | 3 of 33 |
+| Gate | Candidates tested | Horizons covered | Passing |
+| --- | ---: | --- | ---: |
+| Raw IC significant at 5%, no correction (111 factor-horizon cells) | 111 | 1 / 5 / 20 | 41 |
+| Multiple-comparison control (BH-FDR) | 111 | 1 / 5 / 20 | 35 |
+| Bonferroni | 111 | 1 / 5 / 20 | 28 |
+| In-sample picks surviving out of sample (single 50/50 split) | 111 | 1 / 5 / 20 | 11 of 16 |
+| Robust across 4 walk-forward folds (>=2 folds selected, >=60% survived) | 74 | **5 / 20 only** | 12 |
+| Net of 20 bps round-trip cost, net-excess t > 2 | 18 (out-of-sample survivors ∪ walk-forward robust) | 1 / 5 / 20 | 3 |
+
+Taking all four gates together leaves **0** combinations. That matters for how the numbers are read: the
+walk-forward gate never tests the 1-day horizon, and the cost gate tests the union of the two preceding gates
+rather than their intersection, so "41 → 35 → 11 → 12 → 3" is not a tightening sequence (it even grows at
+11 → 12) and the claim that each gate removed candidates would be false.
 
 Two things are worth stating plainly. First, the strongest in-sample factors failed out of sample
 (alpha_008: in-sample t = 4.90, out-of-sample -0.54), which is the classic selection trap. Second, the
@@ -302,8 +308,9 @@ per-fold matrix showed fold 4 (test window 2026-03-27 to 2026-06-25) failing for
 while the other three folds produced 36 survivors, so these signals have whole windows where they stop working.
 Attempts to explain that window were rejected by the data: the highest-dispersion bucket actually has the
 strongest IC, and the low-momentum bucket is generally better than the high one, so fold 4 is recorded as
-unexplained rather than assigned a convenient story. Mean turnover across the costed portfolios is 0.90 and the
-median break-even cost 23.4 bps, which is why only 3 of 33 clear a realistic cost hurdle.
+unexplained rather than assigned a convenient story. Mean turnover across the 18 costed portfolios is 0.934 and
+the median break-even cost 26.4 bps, which is why only 3 of 18 clear a realistic cost hurdle — and **none of the
+12 walk-forward robust combinations do**, so the two gates are nearly disjoint.
 
 Methodological notes that carried over from the rule study: p-values come from a normal approximation of the
 overlap-adjusted t statistic, the multiple-testing correction is implemented in-repo (Bonferroni and

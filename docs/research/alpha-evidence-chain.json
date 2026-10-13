@@ -28,8 +28,38 @@
     "out_of_sample_survivors": 11,
     "walkforward_combinations": 74,
     "walkforward_robust": 12,
-    "costed_combinations": 33,
+    "costed_combinations": 18,
     "net_excess_t_above_2": 3
+  },
+  "gate_overlap": {
+    "_note": "各道闸门覆盖的组合集合不嵌套，所以证据链不是层层收紧的漏斗。这里记下真实关系，任何把这些数字写成一条单向箭头链的表述都与产物不符。",
+    "horizons_tested": {
+      "multiple_testing": [
+        1,
+        5,
+        20
+      ],
+      "out_of_sample": [
+        1,
+        5,
+        20
+      ],
+      "walk_forward": [
+        5,
+        20
+      ],
+      "cost_check": [
+        1,
+        5,
+        20
+      ]
+    },
+    "bh_and_oos": 11,
+    "oos_and_robust": 5,
+    "robust_and_costed": 0,
+    "robust_with_cost_data": 12,
+    "robust_missing_cost_data": [],
+    "all_four_gates": 0
   },
   "walk_forward": {
     "folds": [
@@ -42,8 +72,8 @@
     "fold4_survived": 0
   },
   "cost_check": {
-    "median_break_even_bps": 23.4,
-    "mean_turnover": 0.904
+    "median_break_even_bps": 26.4,
+    "mean_turnover": 0.934
   },
   "state_dependence": {
     "factors_compared": 10,
