@@ -1,0 +1,108 @@
+{
+  "_note": "由 scripts/brick_research.py 生成；docs/research 的数字以此为准。",
+  "price_vs_brick": {
+    "observations": 221348,
+    "symbols": 400,
+    "up_and_red": 83384,
+    "down_and_green": 84917,
+    "up_but_green": 22691,
+    "down_but_red": 21654,
+    "flat": 8702,
+    "up_and_red_pct": 37.67,
+    "down_and_green_pct": 38.36,
+    "up_but_green_pct": 10.25,
+    "down_but_red_pct": 9.78,
+    "flat_pct": 3.93,
+    "agreement_pct": 76.03,
+    "disagreement_pct": 20.03
+  },
+  "b3_features": {
+    "平开 |open/prev_close-1| <= 1%": {
+      "hits": 252,
+      "pct": 100.0
+    },
+    "小实体 |close-open|/prev_close <= 2%": {
+      "hits": 252,
+      "pct": 100.0
+    },
+    "近 3 日内有过 >=4% 大涨": {
+      "hits": 209,
+      "pct": 82.9
+    },
+    "股价在 20 日线上": {
+      "hits": 174,
+      "pct": 69.0
+    },
+    "量在 10 日线上": {
+      "hits": 71,
+      "pct": 28.2
+    },
+    "前 3 日（t-1..t-3）连阴": {
+      "hits": 0,
+      "pct": 0.0
+    }
+  },
+  "b3_sentences": {
+    "A 平开 + 小实体": {
+      "selected": 161700,
+      "coverage_pct": 100.0,
+      "precision_pct": 0.16,
+      "lift": 1.0
+    },
+    "B A + 近 3 日大涨 4%": {
+      "selected": 14357,
+      "coverage_pct": 82.9,
+      "precision_pct": 1.46,
+      "lift": 9.34
+    },
+    "C B + 20 日线上": {
+      "selected": 10273,
+      "coverage_pct": 59.5,
+      "precision_pct": 1.46,
+      "lift": 9.37
+    },
+    "D B + 量在 10 日线上": {
+      "selected": 5798,
+      "coverage_pct": 22.2,
+      "precision_pct": 0.97,
+      "lift": 6.2
+    },
+    "E B + 前期超跌（20 日累计跌幅 >15%）": {
+      "selected": 723,
+      "coverage_pct": 0.0,
+      "precision_pct": 0.0,
+      "lift": 0.0
+    },
+    "E2 B + 前期超跌（距 20 日高点回撤 >15%）": {
+      "selected": 1259,
+      "coverage_pct": 9.1,
+      "precision_pct": 1.83,
+      "lift": 11.72
+    },
+    "F E + 20 日线上": {
+      "selected": 55,
+      "coverage_pct": 0.0,
+      "precision_pct": 0.0,
+      "lift": 0.0
+    },
+    "G B + 缩量（量 < 10 日均量）": {
+      "selected": 8352,
+      "coverage_pct": 60.7,
+      "precision_pct": 1.83,
+      "lift": 11.75
+    },
+    "H B + 20 日线上 + 缩量": {
+      "selected": 5281,
+      "coverage_pct": 40.1,
+      "precision_pct": 1.91,
+      "lift": 12.27
+    }
+  },
+  "b3_extra": {
+    "n_symbols": 500,
+    "n_signals": 252,
+    "reversal_sentence_selected": 13911,
+    "reversal_sentence_overlap_with_b3": 0,
+    "b3_with_prior3_down": 0
+  }
+}
