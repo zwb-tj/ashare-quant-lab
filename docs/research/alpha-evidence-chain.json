@@ -1,0 +1,79 @@
+{
+  "_note": "由 scripts/alpha_evidence_chain.py --write 生成；真实产物的数字以此为准。核验：python scripts/alpha_evidence_chain.py",
+  "provenance": {
+    "universe": "全市场 A 股日线（stockdb 导出至 data/universe/daily）",
+    "reproduce": [
+      "python scripts/fetch_universe_daily.py",
+      "python scripts/alpha_ic_real.py",
+      "python scripts/alpha_walk_forward.py",
+      "python scripts/alpha_cost_check.py",
+      "python scripts/alpha_state_dependence.py"
+    ],
+    "artifacts": [
+      "output/alpha101_ic_real/corrected.csv",
+      "output/alpha101_ic_real/is_oos.csv",
+      "output/alpha101_ic_real/walk_forward_summary.csv",
+      "output/alpha101_ic_real/walk_forward_detail.csv",
+      "output/alpha101_ic_real/alpha_portfolio_costs.csv",
+      "output/alpha101_ic_real/state_regime_bucket.csv"
+    ],
+    "note": "产物不入库（体积与数据许可原因），因此 CI 校验的是本清单与文档，而不是重跑数据。"
+  },
+  "evidence_chain": {
+    "combinations": 111,
+    "raw_significant": 41,
+    "bh_significant": 35,
+    "bonferroni_significant": 28,
+    "in_sample_significant": 16,
+    "out_of_sample_survivors": 11,
+    "walkforward_combinations": 74,
+    "walkforward_robust": 12,
+    "costed_combinations": 33,
+    "net_excess_t_above_2": 3
+  },
+  "walk_forward": {
+    "folds": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "fold4_selected": 20,
+    "fold4_survived": 0
+  },
+  "cost_check": {
+    "median_break_even_bps": 23.4,
+    "mean_turnover": 0.904
+  },
+  "state_dependence": {
+    "factors_compared": 10,
+    "factors_better_in_closed_band": 7
+  },
+  "skipped": {
+    "count": 22,
+    "factors": [
+      "alpha_011",
+      "alpha_022",
+      "alpha_029",
+      "alpha_048",
+      "alpha_056",
+      "alpha_058",
+      "alpha_059",
+      "alpha_063",
+      "alpha_067",
+      "alpha_069",
+      "alpha_070",
+      "alpha_076",
+      "alpha_079",
+      "alpha_080",
+      "alpha_082",
+      "alpha_087",
+      "alpha_089",
+      "alpha_090",
+      "alpha_091",
+      "alpha_093",
+      "alpha_097",
+      "alpha_100"
+    ]
+  }
+}

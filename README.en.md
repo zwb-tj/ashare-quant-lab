@@ -39,7 +39,7 @@ git clone https://github.com/zwb-tj/ashare-quant-lab.git
 cd ashare-quant-lab
 pip install -e ".[dev]"        # about 29 seconds
 
-pytest -q                      # 446 cases, fully offline, no network and no API key (about 3 minutes)
+pytest -q                      # 456 cases, fully offline, no network and no API key (about 3 minutes)
 
 # one zero-dependency research command (synthetic data, about 6 seconds)
 python -m aqlab.cli factor-ic --symbols 30 --days 500 --out output
@@ -50,19 +50,20 @@ The timings above come from an actual **fresh clone in a clean virtualenv** (ins
 
 ```bash
 python scripts/reproduce_all.py --verify   # regenerate 8 figures and compare with the committed ones (~24s)
+python scripts/alpha_evidence_chain.py     # check the factor evidence-chain numbers against the real artefacts
 ```
 
 ## Highlights
 
 | Area | Concrete numbers / facts |
 | --- | --- |
-| **Engineering quality** | **446 tests** across 50 modules, fully offline｜**87% coverage**, CI gate `--cov-fail-under=85`｜**ruff + mypy clean** and wired into CI｜Python **3.10 / 3.11 / 3.12** matrix |
+| **Engineering quality** | **456 tests** across 51 modules, fully offline｜**87% coverage**, CI gate `--cov-fail-under=85`｜**ruff + mypy clean** and wired into CI｜Python **3.10 / 3.11 / 3.12** matrix |
 | **Real market scale** | Local LevelDB quote store, **5,424 symbols** (daily from 2000, minute bars from 2025-01)｜a single full-market study covers **58,682 trades** |
 | **Statistical rigour** | Every conclusion carries a **sample size + same-period benchmark excess + Welch t statistic**; the benchmark is an equal-weight market index over the same entry date and holding period｜key findings are checked across **24 parameter/caliber combinations** |
 | **Falsifiable conclusions** | **Several hypotheses were rejected by the project's own data** and written up: the screening rule shows -0.40 ~ -4.23% excess over 334 published records (13 of 24 cells significantly negative); structural exits compress holding to 3-5 days and turn excess negative; all five portfolio weighting methods lose to equal weights |
 | **Formulaic alphas** | A clean-room Alpha101 subset, **44 implemented** with the **22 needing industry or market-cap data explicitly skipped and the missing input named**; the evidence chain tightens layer by layer: 41 raw significant cells → 35 (BH-FDR) → 28 (Bonferroni) → 11/16 surviving out of sample → only **3/33** with a net-excess t above 2 after 20 bps costs |
 | **LLM / agent layer** | Read-only tools + bounded plan-act-observe loop + full-step trace｜**the same 20 tasks evaluated side by side for a scripted agent and a real model** (grounded-number rate 0.989, abstention 1.000, zero constraint violations)｜`aqlab trace` renders a run as a **single self-contained HTML file** that flags failed calls and ungrounded numbers |
-| **Reproducibility** | `scripts/reproduce_all.py --verify` regenerates the README figures and compares them with the committed versions｜`scripts/verify_fresh_clone.py` runs install → tests → figure check inside a **fresh clone** |
+| **Reproducibility** | `scripts/reproduce_all.py --verify` regenerates the README figures and compares them with the committed versions｜`scripts/verify_fresh_clone.py` runs install → tests → figure check inside a **fresh clone**｜the factor evidence-chain numbers live in a committed manifest ([alpha-evidence-chain.json](docs/research/alpha-evidence-chain.json)) checked by `scripts/alpha_evidence_chain.py`, so they are verified in a fresh clone and in CI rather than only where the gitignored `output/` happens to exist |
 | **Documentation** | [Alpha research write-up](docs/ALPHA_RESEARCH.md)｜[Case study](docs/CASE_STUDY.md)｜[Architecture](docs/ARCHITECTURE.md)｜[Roadmap](docs/ROADMAP.md)｜[中文 README](README.md) |
 
 **Stack**: Python 3.10+ ｜ numpy / pandas (the core has no third-party strategy dependencies) ｜ pytest + pytest-cov ｜ GitHub Actions ｜ local LevelDB quote store (C++ engine + Python SDK) ｜ optional: tushare / akshare / matplotlib
@@ -318,7 +319,7 @@ ashare-quant-lab/
 │   ├── sweep.py           # parameter sweep: event study + rolling window + portfolio in one grid comparison
 │   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1 (run the current-day job), register_task.ps1 (register the 17:30 scheduled task)
-├── tests/                 # 446 cases: data, indicators, backtest (incl. the no-lookahead contradiction), tools, agent, evaluation, rules, brick chart, pipeline, notification, position/exit, event study, rolling window, portfolio layer, parameter sweep
+├── tests/                 # 456 cases: data, indicators, backtest (incl. the no-lookahead contradiction), tools, agent, evaluation, rules, brick chart, pipeline, notification, position/exit, event study, rolling window, portfolio layer, parameter sweep
 ├── examples/              # offline demo scripts + example reports
 ├── docs/                  # architecture notes and roadmap
 └── .github/workflows/     # CI: pytest across multiple Python versions
@@ -745,6 +746,12 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.38** Checkable evidence chain: the factor study's headline numbers (41 → 35 → 28, 11/16, 12/74,
+  3/33, fold 4 failing across the board) could previously only be verified against artefacts under the gitignored
+  `output/`, so every assertion was **silently skipped in a fresh clone and in CI**. They now live in a committed
+  manifest, `docs/research/alpha-evidence-chain.json`, generated from the real artefacts by
+  `scripts/alpha_evidence_chain.py --write`, and `tests/test_alpha_evidence_chain.py` reads the manifest and
+  asserts the write-up and both READMEs carry the same values.
 - ✅ **v0.37** Trade-accounting fix (a real bug): `compute_metrics` counted an **open** position as a
   realized trade (`buy_and_hold` reported "1 trade / 100% win rate" from unrealized P&L) and silently dropped
   open trades when closed ones existed. It now counts closed trades only, reports `open_trades` separately, and

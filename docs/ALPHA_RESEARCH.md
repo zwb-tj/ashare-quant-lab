@@ -153,7 +153,11 @@ python scripts/alpha_cost_check.py
 # 4) 市场状态依赖性分析                              -> output/alpha101_ic_real/
 python scripts/alpha_state_dependence.py
 
-# 5) 测试（离线，无需网络）
+# 5) 把上面四步的数字写成可提交清单，并核对文档没漂移
+python scripts/alpha_evidence_chain.py --write     # 生成 docs/research/alpha-evidence-chain.json
+python scripts/alpha_evidence_chain.py             # 对照产物核验，不一致时非零退出
+
+# 6) 测试（离线，无需网络）
 pytest -q
 ```
 
@@ -161,3 +165,10 @@ pytest -q
 产物全部写入 `output/alpha101_ic_real/`。CLI 的同名分析写 `output/alpha101_ic_cli/`，
 两者分开是为了避免一次带合成数据的冒烟运行覆盖真实结果（这条约定有测试守着：
 `tests/test_output_conventions.py`）。
+
+**本文档的数字有一个机器可查的来源**：`docs/research/alpha-evidence-chain.json`
+（由 `scripts/alpha_evidence_chain.py --write` 从真实产物生成，与产物一同入库）。
+之所以要这样做：`output/` 是 gitignored 的，如果校验只挂在"产物存在"的前提后面，
+那么在**全新克隆与 CI 里会被整体跳过** —— 文档最核心的声明恰好落在没人检查的地方。
+`tests/test_alpha_evidence_chain.py` 从这份清单读数字、再断言本文档与 README 出现同值，
+所以产物重算导致清单过期、或有人手改清单，都会立刻失败。

@@ -263,7 +263,7 @@ The volume-ratio gate, in numbers (10-day excess %, 146 published signals):
 
 ## Engineering
 
-446 pytest cases in 50 test modules run offline with no network or API key; statement coverage is 87%
+456 pytest cases in 51 test modules run offline with no network or API key; statement coverage is 87%
 (6,576 statements, 861 missed); CI fails below 85% (`--cov-fail-under=85`). GitHub Actions is split into a
 `verify` job (3.12: ruff, mypy, tests, coverage gate, figure reproduction, CLI smoke) and a `compat` job
 (3.10 and 3.11: import every module and run the suite), both printing an environment report; the lint rule

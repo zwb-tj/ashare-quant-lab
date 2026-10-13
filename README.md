@@ -38,7 +38,7 @@ git clone https://github.com/zwb-tj/ashare-quant-lab.git
 cd ashare-quant-lab
 pip install -e ".[dev]"        # 约 29 秒
 
-pytest -q                      # 446 个用例，全部离线，无需网络与 API key（约 3 分钟）
+pytest -q                      # 456 个用例，全部离线，无需网络与 API key（约 3 分钟）
 
 # 一条零依赖的研究命令（合成数据，约 6 秒）
 python -m aqlab.cli factor-ic --symbols 30 --days 500 --out output
@@ -55,7 +55,7 @@ python scripts/reproduce_all.py --verify   # 重新生成 8 张图并与已提�
 
 | 维度 | 具体数字 / 事实 |
 | --- | --- |
-| **工程质量** | **446 个测试**（50 个模块，全部离线）｜**覆盖率 87%**，CI 门禁 `--cov-fail-under=85`｜**ruff + mypy 全绿**并接入 CI｜Python **3.10 / 3.11 / 3.12** 三版本矩阵 |
+| **工程质量** | **456 个测试**（51 个模块，全部离线）｜**覆盖率 87%**，CI 门禁 `--cov-fail-under=85`｜**ruff + mypy 全绿**并接入 CI｜Python **3.10 / 3.11 / 3.12** 三版本矩阵 |
 | **真实数据规模** | 本地 LevelDB 行情库 **5,424 只标的**（日线 2000 年起、分钟线 2025-01 起）｜单次全市场研究 **58,682 笔**交易 |
 | **统计严谨性** | 所有结论都给**样本数 + 同期基准超额 + Welch t 值**；基准为全市场等权指数（同入场日、同持有期）｜关键结论做 **24 组口径稳健性检查** |
 | **可证伪的结论** | **多条假设被自己的数据否决**并写进文档：选股规则 334 条记录超额 -0.40 ~ -4.23%（24 格中 13 格显著为负）；结构离场把持有期压到 3~5 天且超额转负；组合层五种权重方法全部跑输等权基准 |
@@ -328,6 +328,7 @@ README 里的每张图都标了"由某条命令生成"。但**声明不等于事
 python scripts/reproduce_all.py            # 快速档：只用合成数据，约 35 秒
 python scripts/reproduce_all.py --full     # 完整档：再加上真实行情产物（约 30 分钟）
 python scripts/reproduce_all.py --verify   # 把产物生成到临时目录，与 docs/assets 逐字节比对
+python scripts/alpha_evidence_chain.py     # 核对因子证据链数字与真实产物是否一致（不一致退出 1）
 ```
 
 - **快速档**复现合成数据产物（净值/回撤/策略对比/月度热力图/因子图/方案曲线/离线评测），
@@ -339,6 +340,12 @@ python scripts/reproduce_all.py --verify   # 把产物生成到临时目录，�
   与 4 张真实数据图（全市场 B1 研究 419 秒、真实因子 IC 585 秒、真实方案回测 369 秒，合计约 23.5 分钟）。
   顺带确认了一件有用的事：本项目里 matplotlib 的输出是**确定性**的，两次运行的 PNG 字节完全相同，
   所以"图与代码一致"这件事可以用哈希证明，而不是靠人眼比对。
+- **证据链数字也是可查的**：因子研究的核心结论（41 → 35 → 28、11/16、12/74、3/33、折 4 全灭）
+  落在一份入库存的清单 [docs/research/alpha-evidence-chain.json](docs/research/alpha-evidence-chain.json) 上，
+  由 `scripts/alpha_evidence_chain.py --write` 从真实产物生成。为什么需要它：`output/` 是 gitignored 的，
+  如果校验只挂在"产物存在"的前提后面，在**全新克隆与 CI 里就会被整体跳过**——文档最核心的声明
+  恰好落在没人检查的地方。`tests/test_alpha_evidence_chain.py` 从清单读数字再断言文档出现同值，
+  所以产物重算导致清单过期、或有人手改清单，都会立刻失败。
 
 配套的测试（`tests/test_reproduce.py`）守三件事：步骤清单自洽、校验逻辑真的能发现"改过一个字节"和"缺文件"、
 以及**README 里嵌入的每张图都必须有对应的复现步骤**（漏一张就失败）。这样"可复现"不再是形容词，而是一条会红的测试。
@@ -860,7 +867,7 @@ ashare-quant-lab/
 │   ├── sweep.py           # 参数扫描：事件研究 + 滚动窗口 + 组合层三合一的格点对比
 │   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
-├── tests/                 # 446 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
+├── tests/                 # 456 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
 ├── examples/              # 离线 demo 脚本 + 示例报告
 ├── docs/                  # 架构说明、路线图、案例研究、图表资产（assets/）
 └── .github/workflows/     # CI：多 Python 版本跑 pytest
@@ -1287,6 +1294,7 @@ python scripts/opening_filter_study.py                       # 决策日开盘 0
 - ✅ **v0.10** 选股日志回测：次日开盘入场 + 去重窗口 + 持有期收益 + **同期等权篮子超额**（`aqlab picks-backtest`）。
 - ✅ **v0.11** 全市场检验：B1 全市场重筛（5,424 只）+ 0AMV 波段闸门 + 离场规则引擎（止损止盈/白黄线/牵牛绳/滴滴）+ 开盘量能特征（`aqlab universe-study`）。
 - ✅ **v0.12** 长样本复核：21 个月分层抽样（13,492 笔）+ 开盘特征样本外检验（结论：开盘形态边际不稳定，0AMV 阶段与持有期才稳定）。
+- ✅ **v0.38** 证据链可查：因子研究的核心数字（41 → 35 → 28、11/16、12/74、3/33、折 4 全灭）此前只在 gitignored 的 `output/` 下可校验，全新克隆与 CI 里**整体静默跳过**；现落成入库清单 `docs/research/alpha-evidence-chain.json`（由 `scripts/alpha_evidence_chain.py --write` 从真实产物生成），`tests/test_alpha_evidence_chain.py` 从清单读数字再断言自述文档与中英 README 出现同值。
 - ✅ **v0.37** 交易统计口径修正（真 bug）：`compute_metrics` 曾把**未平仓**持仓当成已平仓交易（`buy_and_hold` 报"1 笔 / 胜率 100%"，实为浮动盈亏），有平仓时又静默丢弃未平仓笔；现只统计已平仓交易并另报 `open_trades`，无已平仓时胜率取 `n/a`，并补两条守卫测试。
 - ✅ **v0.29** 状态依赖性分析：按市场动量 / 离散度 / 0AMV 波段分组看 IC——10 个因子里 **7 个**关波段更优（3 个方向相反），而折 4 的失效无法用单一状态解释（两个猜测被数据否掉，如实记录）。
 - ✅ **v0.28** 多折 walk-forward 验证：4 折扩张窗口滚动，12 个组合稳健；折 4（2026Q2）全员失效，说明因子存在整段失效窗口。
