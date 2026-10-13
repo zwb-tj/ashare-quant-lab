@@ -37,7 +37,8 @@ def main() -> None:
                 "年化波动%": round(metrics["ann_vol"] * 100, 2),
                 "Sharpe": round(metrics["sharpe"], 3),
                 "最大回撤%": round(metrics["max_drawdown"] * 100, 2),
-                "交易数": metrics.get("trades"),
+                "已平仓交易": metrics.get("trades", 0),
+                "未平仓": int(metrics.get("open_trades", 0) or 0),
                 "胜率%": round(metrics.get("win_rate_trade", float("nan")) * 100, 2),
             }
         )

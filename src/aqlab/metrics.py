@@ -98,15 +98,22 @@ def compute_metrics(
         metrics["exposure"] = float((frame["pos"].fillna(0.0) != 0).mean())
 
     if trades is not None and len(trades):
-        closed = trades[~trades.get("open", False).astype(bool)] if "open" in trades else trades
-        closed = closed if len(closed) else trades
+        # Only closed round trips are realized trades. An open position is not a
+        # trade yet: counting it would turn unrealized P&L into a win rate (a
+        # buy-and-hold run would report "1 trade, 100% win rate"). It is reported
+        # separately as ``open_trades`` instead — same convention as report.py.
+        is_open = trades["open"].fillna(False).astype(bool) if "open" in trades else pd.Series(False, index=trades.index)
+        closed = trades[~is_open]
+        n_closed, n_open = len(closed), int(is_open.sum())
         net = closed["net_return"].astype(float)
-        metrics["trades"] = len(closed)
-        metrics["win_rate_trade"] = float((net > 0).mean())
-        metrics["avg_trade"] = float(net.mean())
-        metrics["avg_bars_held"] = float(closed["bars_held"].mean())
-        metrics["best_trade"] = float(net.max())
-        metrics["worst_trade"] = float(net.min())
+        metrics["trades"] = n_closed
+        if n_open:
+            metrics["open_trades"] = n_open
+        metrics["win_rate_trade"] = float((net > 0).mean()) if n_closed else float("nan")
+        metrics["avg_trade"] = float(net.mean()) if n_closed else float("nan")
+        metrics["avg_bars_held"] = float(closed["bars_held"].mean()) if n_closed else float("nan")
+        metrics["best_trade"] = float(net.max()) if n_closed else float("nan")
+        metrics["worst_trade"] = float(net.min()) if n_closed else float("nan")
 
     return metrics
 

@@ -151,7 +151,76 @@ def test_state_claim_is_seven_of_ten_not_all_ten():
         if {"开波段", "关波段"} <= set(row.index) and float(row.loc["关波段", "ic_mean"]) > float(row.loc["开波段", "ic_mean"]):
             better += 1
     assert better == 7, f"实际 {better} 个因子关波段更优"
+    # 判断"是不是把 7/10 写成了 10/10"不能只匹配一种措辞：这个错误在
+    # README.md / README.en.md / docs/ROADMAP.md 里各以不同说法出现过一次
+    # （"全部高于" / "every factor" / "一致更好"），只钉字面量就会漏。
+    banned = ("全部 10 个因子", "全部高于", "一致更好", "every factor", "all ten factors")
+    for name in ("README.md", "README.en.md", "docs/ROADMAP.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        for phrase in banned:
+            assert phrase not in text, f"{name} 不该再声称全部 10 个因子（命中 {phrase!r}）"
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "全部 10 个因子" not in readme, "README 不该再声称全部 10 个因子"
     assert "10 个因子里**7 个**" in readme or "7 个" in readme
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    assert "7 of 10" in english, "英文 README 也该写明 7/10"
+
+
+# --------------------------------------------------------------------------------------
+# README 的"实测输出"两张表
+# --------------------------------------------------------------------------------------
+# 这两张表此前完全没有守卫——`buy_and_hold` 的"1 笔交易 / 胜率 100%"就是从这里被发现口径不对的。
+# 守卫必须跑**真实的 CLI**并把它的 stdout 抽出来比对，不能用测试里重写的一份格式化逻辑：
+# 那样只会验证"我的复现与我的实现一致"，还会放过 README 里手写的、命令根本不会打印的形式。
+def _run_demo(seed: int, tmp_path: Path) -> dict[str, list[str]]:
+    """跑真实的 `aqlab demo`，把 stdout 里的表格行解析出来。"""
+    completed = subprocess.run(
+        [sys.executable, "-m", "aqlab.cli", "demo", "--seed", str(seed), "--out", str(tmp_path / f"demo{seed}")],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert completed.returncode == 0, f"demo --seed {seed} 失败：{completed.stderr[-400:]}"
+    rows: dict[str, list[str]] = {}
+    for line in completed.stdout.splitlines():
+        if not line.startswith("| ") or line.startswith("| 策略 |") or set(line) <= {"|", "-", " ", ":"}:
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        rows[cells[0]] = cells[1:]
+    return rows
+
+
+def _readme_table_rows(text: str, header_marker: str) -> dict[str, list[str]]:
+    """取出 README 里以 ``header_marker`` 开头的那张表的数据行。"""
+    lines = text.splitlines()
+    start = next(index for index, line in enumerate(lines) if line.startswith(header_marker))
+    rows: dict[str, list[str]] = {}
+    for line in lines[start + 2:]:
+        if not line.startswith("|"):
+            break
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        rows[cells[0]] = cells[1:]
+    return rows
+
+
+def test_readme_demo_tables_match_the_actual_demo_output(tmp_path):
+    """两个 README 的 demo 表必须**就是** `aqlab demo` 的输出（逐列、逐字符）。
+
+    英文表曾经漏改过一次（表头还是旧的 8 列、`buy_and_hold` 那行还是错的），
+    所以两种语言都要守。
+    """
+    for name, marker in (("README.md", "| 策略 | 总收益%"), ("README.en.md", "| Strategy | Total return %")):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        blocks = text.split(marker)
+        assert len(blocks) == 3, f"{name} 应恰好有两张 demo 表（上涨 / 下跌）"
+
+        for seed, block in zip((25, 7), blocks[1:], strict=True):
+            documented = _readme_table_rows(marker + block, marker)
+            actual = _run_demo(seed, tmp_path)
+            assert set(documented) == set(actual), f"{name} seed={seed} 表的策略集合不一致"
+            for strategy, expected in actual.items():
+                assert documented[strategy] == expected, (
+                    f"{name} seed={seed} 的 {strategy} 行与真实 demo 输出不一致："
+                    f"文档 {documented[strategy]} vs 实际 {expected}"
+                )
+            # 口径本身也要钉住：买入持有只有未平仓持仓，胜率必须是 n/a 而不是 100%
+            assert documented["buy_and_hold"][5:7] == ["0", "1"], f"{name}: buy_and_hold 应为「已平仓 0 / 未平仓 1」"
+            assert documented["buy_and_hold"][7] == "n/a", f"{name}: 只有未平仓持仓时胜率必须是 n/a"

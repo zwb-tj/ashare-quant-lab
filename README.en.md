@@ -39,7 +39,7 @@ git clone https://github.com/zwb-tj/ashare-quant-lab.git
 cd ashare-quant-lab
 pip install -e ".[dev]"        # about 29 seconds
 
-pytest -q                      # 443 cases, fully offline, no network and no API key (about 3 minutes)
+pytest -q                      # 446 cases, fully offline, no network and no API key (about 3 minutes)
 
 # one zero-dependency research command (synthetic data, about 6 seconds)
 python -m aqlab.cli factor-ic --symbols 30 --days 500 --out output
@@ -56,7 +56,7 @@ python scripts/reproduce_all.py --verify   # regenerate 8 figures and compare wi
 
 | Area | Concrete numbers / facts |
 | --- | --- |
-| **Engineering quality** | **443 tests** across 50 modules, fully offline｜**87% coverage**, CI gate `--cov-fail-under=85`｜**ruff + mypy clean** and wired into CI｜Python **3.10 / 3.11 / 3.12** matrix |
+| **Engineering quality** | **446 tests** across 50 modules, fully offline｜**87% coverage**, CI gate `--cov-fail-under=85`｜**ruff + mypy clean** and wired into CI｜Python **3.10 / 3.11 / 3.12** matrix |
 | **Real market scale** | Local LevelDB quote store, **5,424 symbols** (daily from 2000, minute bars from 2025-01)｜a single full-market study covers **58,682 trades** |
 | **Statistical rigour** | Every conclusion carries a **sample size + same-period benchmark excess + Welch t statistic**; the benchmark is an equal-weight market index over the same entry date and holding period｜key findings are checked across **24 parameter/caliber combinations** |
 | **Falsifiable conclusions** | **Several hypotheses were rejected by the project's own data** and written up: the screening rule shows -0.40 ~ -4.23% excess over 334 published records (13 of 24 cells significantly negative); structural exits compress holding to 3-5 days and turn excess negative; all five portfolio weighting methods lose to equal weights |
@@ -122,21 +122,21 @@ python -m aqlab.cli agent --question "Backtest SYN001 with ma_cross(10,30) and r
 
 **Up market (seed=25, underlying cumulative +128.5%)**
 
-| Strategy | Total return % | Annualized % | Annualized vol % | Sharpe | Max drawdown % | Trades | Win rate % |
-|:--- |---:|---:|---:|---:|---:|---:|---:|
-| buy_and_hold | 128.39 | 31.98 | 28.70 | 1.111 | -28.55 | 1 | 100 |
-| ma_cross | 55.80 | 16.07 | 22.34 | 0.778 | -25.92 | 12 | 50.00 |
-| momentum | 9.83 | 3.20 | 14.81 | 0.287 | -18.23 | 367 | 50.95 |
-| mean_reversion | 41.60 | 12.40 | 13.65 | 0.924 | -23.30 | 20 | 85.00 |
+| Strategy | Total return % | Annualized % | Annualized vol % | Sharpe | Max drawdown % | Closed trades | Open | Win rate % |
+|:--- |---:|---:|---:|---:|---:|---:|---:|---:|
+| buy_and_hold | 128.39 | 31.98 | 28.7 | 1.1105 | -28.55 | 0 | 1 | n/a |
+| ma_cross | 55.8 | 16.07 | 22.34 | 0.7785 | -25.92 | 12 | 0 | 50 |
+| momentum | 9.83 | 3.2 | 14.81 | 0.2868 | -18.23 | 367 | 0 | 50.95 |
+| mean_reversion | 41.6 | 12.4 | 13.65 | 0.9242 | -23.3 | 20 | 1 | 85 |
 
 **Down market (seed=7, underlying cumulative -65.1%)**
 
-| Strategy | Total return % | Annualized % | Annualized vol % | Sharpe | Max drawdown % | Trades | Win rate % |
-|:--- |---:|---:|---:|---:|---:|---:|---:|
-| buy_and_hold | -65.15 | -29.83 | 26.94 | -1.179 | -72.91 | 1 | 0.00 |
-| ma_cross | -21.35 | -7.75 | 15.39 | -0.447 | -37.28 | 13 | 23.08 |
-| momentum | -10.98 | -3.83 | 9.14 | -0.382 | -19.76 | 155 | 40.65 |
-| mean_reversion | -45.53 | -18.46 | 19.00 | -0.979 | -53.88 | 30 | 50.00 |
+| Strategy | Total return % | Annualized % | Annualized vol % | Sharpe | Max drawdown % | Closed trades | Open | Win rate % |
+|:--- |---:|---:|---:|---:|---:|---:|---:|---:|
+| buy_and_hold | -65.15 | -29.83 | 26.94 | -1.1791 | -72.91 | 0 | 1 | n/a |
+| ma_cross | -21.35 | -7.75 | 15.39 | -0.4473 | -37.28 | 13 | 0 | 23.08 |
+| momentum | -10.98 | -3.83 | 9.14 | -0.3815 | -19.76 | 155 | 1 | 40.65 |
+| mean_reversion | -45.53 | -18.46 | 19 | -0.9789 | -53.88 | 30 | 0 | 50 |
 
 **Equity, drawdown and strategy comparison (`aqlab plot`, same synthetic bars, fees and slippage included)**
 
@@ -156,6 +156,9 @@ python -m aqlab.cli agent --question "Backtest SYN001 with ma_cross(10,30) and r
 - In the bull market **no strategy beats buy-and-hold** — this is not a bug but the fact a backtest should expose: timing strategies are structurally disadvantaged in a one-way uptrend.
 - In the bear market `momentum` / `ma_cross` compress the -65% drawdown to -11% / -21%, which shows their value lies in **risk control**, not return enhancement.
 - An analysis that declares a strategy "effective" from a single regime is not worth trusting; **comparison across regimes** is the starting point.
+- **The trade count includes closed trades only**: `buy_and_hold` holds one position it never sells, so it reads
+  "0 closed / 1 open" and a win rate of `n/a` rather than 100% — counting unrealized P&L as a realized win is one
+  of the most common ways a backtest lies to itself.
 
 ## LLM / Agent research layer (v0.2, implemented)
 
@@ -315,7 +318,7 @@ ashare-quant-lab/
 │   ├── sweep.py           # parameter sweep: event study + rolling window + portfolio in one grid comparison
 │   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1 (run the current-day job), register_task.ps1 (register the 17:30 scheduled task)
-├── tests/                 # 443 cases: data, indicators, backtest (incl. the no-lookahead contradiction), tools, agent, evaluation, rules, brick chart, pipeline, notification, position/exit, event study, rolling window, portfolio layer, parameter sweep
+├── tests/                 # 446 cases: data, indicators, backtest (incl. the no-lookahead contradiction), tools, agent, evaluation, rules, brick chart, pipeline, notification, position/exit, event study, rolling window, portfolio layer, parameter sweep
 ├── examples/              # offline demo scripts + example reports
 ├── docs/                  # architecture notes and roadmap
 └── .github/workflows/     # CI: pytest across multiple Python versions
@@ -742,8 +745,12 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
-- ✅ **v0.29** State-dependence analysis: the closed 0AMV band is consistently better for every factor, and
-  two plausible explanations for the fold-4 failure are rejected by the data.
+- ✅ **v0.37** Trade-accounting fix (a real bug): `compute_metrics` counted an **open** position as a
+  realized trade (`buy_and_hold` reported "1 trade / 100% win rate" from unrealized P&L) and silently dropped
+  open trades when closed ones existed. It now counts closed trades only, reports `open_trades` separately, and
+  leaves the win rate `n/a` when nothing has been closed; two guard tests pin the behaviour.
+- ✅ **v0.29** State-dependence analysis: the closed 0AMV band is better for **7 of 10** factors (three move the
+  other way), and two plausible explanations for the fold-4 failure are rejected by the data.
 - ✅ **v0.28** Walk-forward fold validation: 12 robust combinations out of 74, with fold 4 (2026 Q2) failing
   across the board.
 - ✅ **v0.27** Cost check on the alpha portfolios (next-open entry, turnover-based costs, break-even cost);

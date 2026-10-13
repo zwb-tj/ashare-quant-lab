@@ -64,6 +64,43 @@ def test_missing_columns_raise():
         compute_metrics(pd.DataFrame({"equity": [1.0, 1.1]}))
 
 
+def test_never_closed_position_is_not_a_trade():
+    """Regression: an open position is not a realized trade.
+
+    Buy-and-hold enters once and never exits. Counting that position would
+    report "1 trade, 100% win rate" by treating *unrealized* P&L as realized —
+    the win rate must be undefined, not 100%.
+    """
+    from aqlab.strategies import build_strategy
+
+    df = generate_synthetic_ohlcv(n_days=750, seed=25)  # +128.5% market
+    strategy = build_strategy("buy_and_hold")
+    result = run_backtest(df, strategy.positions(df), config=BacktestConfig())
+    assert result.trades["open"].sum() == 1  # the position really is open
+
+    metrics = compute_metrics(result.frame, initial_cash=result.config.initial_cash, trades=result.trades)
+    assert metrics["trades"] == 0
+    assert metrics["open_trades"] == 1
+    assert np.isnan(metrics["win_rate_trade"])
+
+
+def test_open_trade_is_reported_alongside_closed_ones():
+    """An open position must not be silently dropped when closed trades exist."""
+    from aqlab.strategies import build_strategy
+
+    df = generate_synthetic_ohlcv(n_days=750, seed=25)
+    strategy = build_strategy("mean_reversion")
+    result = run_backtest(df, strategy.positions(df), config=BacktestConfig())
+    closed = int((~result.trades["open"].astype(bool)).sum())
+    opened = int(result.trades["open"].astype(bool).sum())
+    assert closed > 0 and opened > 0
+
+    metrics = compute_metrics(result.frame, initial_cash=result.config.initial_cash, trades=result.trades)
+    assert metrics["trades"] == closed
+    assert metrics["open_trades"] == opened
+    assert closed + opened == len(result.trades)  # nothing vanishes
+
+
 def test_format_metrics_renders_percentages():
     frame = _flat_frame([0.01, 0.02, -0.01])
     metrics = compute_metrics(frame, initial_cash=1.0)

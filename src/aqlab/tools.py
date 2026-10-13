@@ -383,6 +383,7 @@ class ToolRegistry:
             "annual_turnover",
             "exposure",
             "trades",
+            "open_trades",
             "win_rate_trade",
             "avg_trade",
         )

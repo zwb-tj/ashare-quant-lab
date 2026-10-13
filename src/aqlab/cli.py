@@ -65,7 +65,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
         strategy = build_strategy(name)
         result = run_backtest(df, strategy.positions(df), config=config, name=strategy.name)
         metrics = compute_metrics(result.frame, initial_cash=config.initial_cash, trades=result.trades)
-        summary.append({"strategy": name, **{k: metrics.get(k) for k in ("total_return", "cagr", "ann_vol", "sharpe", "max_drawdown", "trades", "win_rate_trade")}})
+        summary.append({"strategy": name, **{k: metrics.get(k) for k in ("total_return", "cagr", "ann_vol", "sharpe", "max_drawdown", "trades", "open_trades", "win_rate_trade")}})
         write_report(out_root / "demo" / name, name, result, metrics, extras={"strategy": name, **strategy.params})
 
     import pandas as pd
@@ -73,6 +73,8 @@ def cmd_demo(args: argparse.Namespace) -> int:
     table = pd.DataFrame(summary)
     for col in ("total_return", "cagr", "ann_vol", "max_drawdown", "win_rate_trade"):
         table[col] = (table[col] * 100).round(2)
+    if "open_trades" in table:
+        table["open_trades"] = table["open_trades"].fillna(0).astype(int)
     table = table.rename(
         columns={
             "strategy": "策略",
@@ -81,11 +83,13 @@ def cmd_demo(args: argparse.Namespace) -> int:
             "ann_vol": "年化波动%",
             "sharpe": "Sharpe",
             "max_drawdown": "最大回撤%",
-            "trades": "交易数",
+            "trades": "已平仓交易",
+            "open_trades": "未平仓",
             "win_rate_trade": "胜率%",
         }
     )
     print(markdown_table(table))
+    print("\n胜率与单笔统计只统计**已平仓**交易；未平仓持仓按浮动盈亏展示，不计入胜率。")
     print(f"\n报告已写入：{out_root / 'demo'}")
     return 0
 

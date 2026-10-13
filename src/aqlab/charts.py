@@ -113,11 +113,17 @@ def plot_strategy_comparison(
     positions = np.arange(len(labels))
     for axis, column in zip(axes, metrics, strict=False):
         values = pd.to_numeric(summary[column], errors="coerce").to_numpy(dtype=float)
-        colors = ["#2e7d32" if value >= 0 else "#c0392b" for value in np.nan_to_num(values)]
-        axis.bar(positions, np.nan_to_num(values), color=colors, alpha=0.85)
+        heights = np.nan_to_num(values)
+        colors = ["#2e7d32" if value >= 0 else "#c0392b" for value in heights]
+        axis.bar(positions, heights, color=colors, alpha=0.85)
+        # 未定义的指标（如只有未平仓持仓、没有已平仓交易时的胜率）必须显式标注，
+        # 否则一根零高柱会被读成"0%"——那是把一个"没有数据"画成了一个坏成绩。
+        undefined = np.isnan(values)
         axis.set_xticks(positions)
         axis.set_xticklabels(labels, rotation=30, ha="right", fontsize=7)
-        axis.set_title(column, fontsize=9)
+        for index in np.flatnonzero(undefined):
+            axis.text(float(positions[index]), 0.0, "n/a", ha="center", va="bottom", fontsize=7, color="#666666")
+        axis.set_title(f"{column} (n/a = undefined)" if undefined.any() else column, fontsize=9)
         axis.axhline(0, color="#444444", linewidth=0.8)
         axis.grid(alpha=0.2, axis="y")
     figure.suptitle(title, fontsize=10)
