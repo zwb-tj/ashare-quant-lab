@@ -65,6 +65,7 @@ factor_ic / factor_strategy）负责"结论站不站得住"；**展示层**（re
 | `notify.py` | 飞书 webhook 通知（可选签名） | 不生成内容 |
 | `pipeline.py` | 把数据获取、筛选、回测、报告串成一条可复用流水线 | 不含规则逻辑 |
 | `indicators_extra.py` | 扩展指标（0AMV 活跃市值、砖型图等） | 不做仓位 |
+| `console.py` | 控制台输出与子进程编码（强制 UTF-8，避免 Windows GBK 下非 ASCII 输出崩溃） | 不格式化业务内容 |
 | `cli.py` | 参数解析与流程编排 | 不含业务逻辑 |
 
 ## 执行时序（关键设计）

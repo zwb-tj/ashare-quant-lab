@@ -26,7 +26,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -35,6 +34,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
+
+sys.path.insert(0, str(ROOT / "src"))
+
+from aqlab.console import ensure_utf8_output, run_utf8  # noqa: E402
 
 
 @dataclass
@@ -162,7 +165,7 @@ def run_step(step: Step, out_root: Path, cwd: Path = ROOT) -> dict:
     """执行一个步骤，返回 ``{"step", "seconds", "returncode", "missing"}``。"""
     command = [str(out_root) if part == "OUT" else part for part in step.argv()]
     start = time.time()
-    completed = subprocess.run(command, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace")
+    completed = run_utf8(command, cwd=cwd)
     seconds = time.time() - start
     missing = [name for name in step.outputs if not (out_root / name).exists()]
     return {
@@ -260,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    ensure_utf8_output()
     steps = build_steps(full=args.full)
     temporary = None
     if args.out:

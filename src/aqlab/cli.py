@@ -11,7 +11,6 @@ Examples
 from __future__ import annotations
 
 import argparse
-import contextlib
 import os
 import sys
 from pathlib import Path
@@ -1824,22 +1823,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _make_output_encoding_safe() -> None:
-    """Windows 控制台默认 GBK，遇到 −/≤/℃ 这类字符会直接抛 UnicodeEncodeError。
-
-    优先切 UTF-8；切不动就退化成替换字符，保证报告能完整打印完。
-    """
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(encoding="utf-8")
-        except Exception:
-            with contextlib.suppress(Exception):
-                reconfigure(errors="replace")
-
-
 def main(argv: list[str] | None = None) -> int:
     # 先加载本地的 .env（若存在），这样 .env.example 里承诺的配置方式才真的有效；
     # 已设置的环境变量优先，因此 CI 与显式 export 不受影响。
@@ -1849,7 +1832,9 @@ def main(argv: list[str] | None = None) -> int:
     if loaded and "--quiet" not in (argv if argv is not None else sys.argv[1:]):
         pass  # 不打印键值（避免把密钥写进日志），需要时用 `aqlab doctor`
 
-    _make_output_encoding_safe()
+    from aqlab.console import ensure_utf8_output
+
+    ensure_utf8_output()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

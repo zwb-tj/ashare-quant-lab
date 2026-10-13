@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import argparse
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+
+from aqlab.console import run_utf8  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,9 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     commands = len(build_parser()._subparsers._group_actions[0].choices)
     check(f"CLI 子命令数 = {commands}", commands >= 20, f"实际 {commands}")
 
-    collected = subprocess.run(
+    collected = run_utf8(
         [sys.executable, "-m", "pytest", "--collect-only", "-q"],
-        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=ROOT,
     )
     total = sum(int(m) for m in re.findall(r":\s*(\d+)$", collected.stdout, flags=re.M))
     check(f"测试用例数 = {total}", total >= 380, f"实际 {total}")

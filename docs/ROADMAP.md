@@ -265,6 +265,25 @@
   所以只能说「关波段整体更有利」而不是普适规律）；「高离散导致折 4 失效」与「低动量导致失效」两个猜测都被数据否掉。
 - 待办：状态 × 因子的交互显著性检验；用滚动分档替代全样本分档（当前分档用到了未来信息，属解释性分析）。
 
+## v0.39 · 编码与验证环境（✅ 已完成，2026-09）
+
+- **发现的真 bug（Windows 控制台）**：`scripts/verify_fresh_clone.py` 跑到最后一步崩在
+  `UnicodeEncodeError: 'gbk' codec can't encode character '\ufffd'`。根因不是"父进程解码参数不对"：
+  **子进程自己就崩了**——它按控制台 locale（cp936）写 stdout，输出里含 `−`（U+2212）时抛 `UnicodeEncodeError`
+  （退出码 1、stdout 为空）；父进程再用 `errors="replace"` 解码只拿到替换字符，打印时又撞上父进程自己的 GBK。
+  所以修法必须给子进程显式设 `PYTHONIOENCODING=utf-8`。
+- 新增 `src/aqlab/console.py`（`ensure_utf8_output()` + `run_utf8()`），把 `cli.py` 里的私有实现提升为共享模块，
+  一处修、全部调用点受益：`cli.py`、`scripts/verify_fresh_clone.py`、`scripts/reproduce_all.py`、
+  `scripts/verify_brief_claims.py`，以及**守卫测试扫出来的第 5 处 `scripts/scan_secrets.py`**（我最初漏掉了它）。
+- **同一个脚本还破坏了开发环境**：它在临时克隆里用 `sys.executable -m pip install -e .` 安装，
+  把本机解释器的 `aqlab` 指向临时目录；临时目录删除后 `import aqlab` 直接失效（`.pth` 悬空）。
+  更糟的是这让"全新克隆验证"不诚实——它其实跑在一个已装好 `aqlab` 的解释器上。
+  改为**先建独立 venv，之后所有步骤都用 venv 里的解释器**。
+- `tests/test_console.py`（4 个）：非 ASCII（含 U+2212）必须完整回传且无替换字符；子进程 `sys.stdout.encoding` 必须是 utf-8；
+  扫 `scripts/*.py` 禁止绕过 `run_utf8` 直接 `capture_output=True`；打印非 ASCII 的入口脚本必须调 `ensure_utf8_output()`。
+  `tests/test_alpha_docs.py` 增加一条：验证脚本必须用独立 venv，不得对本机解释器做 editable 安装。
+- 顺带把 `alpha_evidence_chain.py` 加进 `EXPECTED_SCRIPTS`（7 个），`docs/ARCHITECTURE.md` 补 `console.py`。
+
 ## v0.38 · 证据链可查（✅ 已完成，2026-09）
 
 - **发现的真落差**：文档最核心的数字（41 → 35 → 28、11/16、12/74、3/33、折 4 全灭）全部来自 `output/` 下的产物，

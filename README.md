@@ -38,7 +38,7 @@ git clone https://github.com/zwb-tj/ashare-quant-lab.git
 cd ashare-quant-lab
 pip install -e ".[dev]"        # 约 29 秒
 
-pytest -q                      # 456 个用例，全部离线，无需网络与 API key（约 3 分钟）
+pytest -q                      # 461 个用例，全部离线，无需网络与 API key（约 3 分钟）
 
 # 一条零依赖的研究命令（合成数据，约 6 秒）
 python -m aqlab.cli factor-ic --symbols 30 --days 500 --out output
@@ -55,13 +55,13 @@ python scripts/reproduce_all.py --verify   # 重新生成 8 张图并与已提�
 
 | 维度 | 具体数字 / 事实 |
 | --- | --- |
-| **工程质量** | **456 个测试**（51 个模块，全部离线）｜**覆盖率 87%**，CI 门禁 `--cov-fail-under=85`｜**ruff + mypy 全绿**并接入 CI｜Python **3.10 / 3.11 / 3.12** 三版本矩阵 |
+| **工程质量** | **461 个测试**（52 个模块，全部离线）｜**覆盖率 87%**，CI 门禁 `--cov-fail-under=85`｜**ruff + mypy 全绿**并接入 CI｜Python **3.10 / 3.11 / 3.12** 三版本矩阵 |
 | **真实数据规模** | 本地 LevelDB 行情库 **5,424 只标的**（日线 2000 年起、分钟线 2025-01 起）｜单次全市场研究 **58,682 笔**交易 |
 | **统计严谨性** | 所有结论都给**样本数 + 同期基准超额 + Welch t 值**；基准为全市场等权指数（同入场日、同持有期）｜关键结论做 **24 组口径稳健性检查** |
 | **可证伪的结论** | **多条假设被自己的数据否决**并写进文档：选股规则 334 条记录超额 -0.40 ~ -4.23%（24 格中 13 格显著为负）；结构离场把持有期压到 3~5 天且超额转负；组合层五种权重方法全部跑输等权基准 |
 | **公式因子研究** | clean-room 实现 **Alpha101 子集 44 个**（依赖行业/市值的 22 个显式跳过并写明原因）；证据链层层收紧：不校正 41 个显著 → BH-FDR 35 → Bonferroni 28 → 样本外存活 11/16 → 扣 20bps 成本后净超额 t>2 仅 **3/33** |
 | **LLM / Agent 层** | 只读工具层 + 有界代理循环 + 全步骤 trace｜**同一套 20 任务在离线代理与真实模型上并列评测**（数字落地率 0.989、该弃答时弃答 1.000、约束违规 0）｜`aqlab trace` 输出**单文件自包含 HTML**，失败与未落地数字显式标红 |
-| **可复现性** | `scripts/reproduce_all.py --verify` 把 README 里的图重新生成并与已提交版本比对｜`scripts/verify_fresh_clone.py` 在**全新克隆**里跑通安装 → 测试 → 图表校验 |
+| **可复现性** | `scripts/reproduce_all.py --verify` 把 README 里的图重新生成并与已提交版本比对｜`scripts/verify_fresh_clone.py` 在**全新克隆 + 独立 venv**里跑通安装 → 测试 → 图表校验 |
 | **文档** | [因子研究自述](docs/ALPHA_RESEARCH.md)｜[案例研究](docs/CASE_STUDY.md)｜[架构说明](docs/ARCHITECTURE.md)｜[路线图](docs/ROADMAP.md)｜[English README](README.en.md) |
 
 **技术栈**：Python 3.10+ ｜ numpy / pandas（核心零第三方策略依赖）｜ pytest + pytest-cov ｜ GitHub Actions ｜ 本地 LevelDB 行情库（C++ 引擎 + Python SDK）｜ 可选：tushare / akshare / matplotlib
@@ -867,7 +867,7 @@ ashare-quant-lab/
 │   ├── sweep.py           # 参数扫描：事件研究 + 滚动窗口 + 组合层三合一的格点对比
 │   └── cli.py             # .../sweep/decide/quality
 ├── scripts/               # run_daily.ps1（跑当日任务）、register_task.ps1（注册 17:30 计划任务）
-├── tests/                 # 456 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
+├── tests/                 # 461 个用例：数据、指标、回测（含无未来函数反证）、工具、代理、评测、规则、砖型图、流水线、通知、持仓离场、事件研究、滚动窗口、组合层、参数扫描
 ├── examples/              # 离线 demo 脚本 + 示例报告
 ├── docs/                  # 架构说明、路线图、案例研究、图表资产（assets/）
 └── .github/workflows/     # CI：多 Python 版本跑 pytest
@@ -1294,6 +1294,7 @@ python scripts/opening_filter_study.py                       # 决策日开盘 0
 - ✅ **v0.10** 选股日志回测：次日开盘入场 + 去重窗口 + 持有期收益 + **同期等权篮子超额**（`aqlab picks-backtest`）。
 - ✅ **v0.11** 全市场检验：B1 全市场重筛（5,424 只）+ 0AMV 波段闸门 + 离场规则引擎（止损止盈/白黄线/牵牛绳/滴滴）+ 开盘量能特征（`aqlab universe-study`）。
 - ✅ **v0.12** 长样本复核：21 个月分层抽样（13,492 笔）+ 开盘特征样本外检验（结论：开盘形态边际不稳定，0AMV 阶段与持有期才稳定）。
+- ✅ **v0.39** 编码与验证环境：`scripts/verify_fresh_clone.py` 最后一步崩在 `UnicodeEncodeError: 'gbk' codec can't encode character '\ufffd'`——根因是**子进程自己就崩了**（它按控制台 locale 写 stdout，遇到 `−`（U+2212）抛异常），所以只调父进程解码参数无解；现由共享的 `aqlab.console.run_utf8` 给子进程设 `PYTHONIOENCODING=utf-8`。同一脚本还用 `pip install -e .` 装进**本机解释器**，把开发者的 `aqlab` 指向临时目录（删目录后 `import aqlab` 直接失效），也让"全新克隆"验证不诚实（其实跑在已装好的解释器上）——现改为先建独立 venv，全部步骤在 venv 内执行。
 - ✅ **v0.38** 证据链可查：因子研究的核心数字（41 → 35 → 28、11/16、12/74、3/33、折 4 全灭）此前只在 gitignored 的 `output/` 下可校验，全新克隆与 CI 里**整体静默跳过**；现落成入库清单 `docs/research/alpha-evidence-chain.json`（由 `scripts/alpha_evidence_chain.py --write` 从真实产物生成），`tests/test_alpha_evidence_chain.py` 从清单读数字再断言自述文档与中英 README 出现同值。
 - ✅ **v0.37** 交易统计口径修正（真 bug）：`compute_metrics` 曾把**未平仓**持仓当成已平仓交易（`buy_and_hold` 报"1 笔 / 胜率 100%"，实为浮动盈亏），有平仓时又静默丢弃未平仓笔；现只统计已平仓交易并另报 `open_trades`，无已平仓时胜率取 `n/a`，并补两条守卫测试。
 - ✅ **v0.29** 状态依赖性分析：按市场动量 / 离散度 / 0AMV 波段分组看 IC——10 个因子里 **7 个**关波段更优（3 个方向相反），而折 4 的失效无法用单一状态解释（两个猜测被数据否掉，如实记录）。

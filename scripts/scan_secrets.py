@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import argparse
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+sys.path.insert(0, str(ROOT / "src"))
+
+from aqlab.console import run_utf8  # noqa: E402
 
 # 会被提交的文件（示例文件、文档、代码）
 SCAN_SUFFIXES = (".py", ".md", ".toml", ".yml", ".yaml", ".example", ".cfg", ".txt")
@@ -64,10 +67,7 @@ def scan_working_tree() -> list[str]:
 
 
 def scan_history() -> list[str]:
-    result = subprocess.run(
-        ["git", "log", "--all", "-p", "--format="], cwd=ROOT,
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    result = run_utf8(["git", "log", "--all", "-p", "--format="], cwd=ROOT)
     findings: list[str] = []
     # 不能对整段 diff 输出做匹配：diff 头部的提交哈希（40 位十六进制）与"疑似密钥"形状相同，
     # 会造成成片误报。因此只取新增内容行（`+` 开头且不是 `+++`），并跳过 diff 元信息。

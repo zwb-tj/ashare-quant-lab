@@ -53,6 +53,21 @@ def test_fresh_clone_verifier_exists_and_is_referenced():
     assert "verify_fresh_clone.py" in readme, "README 的从零开始章节应提到它"
 
 
+def test_fresh_clone_verifier_installs_into_an_isolated_venv():
+    """全新克隆验证必须在**独立 venv** 里安装。
+
+    事故回顾：该脚本曾用 `sys.executable -m pip install -e .` 在临时克隆里安装，
+    这会把开发机自己的 `aqlab` 指向临时目录；临时目录一删，本机 `import aqlab` 就失效，
+    而且"全新克隆"验证实际上跑在一个已装好 aqlab 的解释器上——验证本身不诚实。
+    """
+    text = (ROOT / "scripts" / "verify_fresh_clone.py").read_text(encoding="utf-8")
+    assert '"venv"' in text, "应创建独立虚拟环境"
+    assert "venv_python" in text, "后续步骤应使用 venv 里的解释器"
+    for line in text.splitlines():
+        if "pip" in line and "install" in line and "sys.executable" in line:
+            raise AssertionError(f"不得用本机解释器安装：{line.strip()}")
+
+
 def test_brief_claim_verifier_exists():
     """"速览不许吹牛"的把关脚本必须入库，且能解释它在核对什么。"""
     script = ROOT / "scripts" / "verify_brief_claims.py"
