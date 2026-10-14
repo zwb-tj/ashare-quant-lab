@@ -223,9 +223,12 @@ three metrics.
   tested was negative. The shipped `min_ratio = 1.0` is a negative contribution here.
 - **"Higher volume ratio means accumulation."** A -0.53% short-window figure became +0.21%
   (t = 1.38) over 21 months: one weak window, not a regularity.
-- **"Structural exits protect profit."** Moving-average breaks alone were 33,440 trades (57%) averaging
-  -1.55%; the trend-line rule added 15,325 at -0.48%. Tail risk was not controlled either: worst trade
-  -26.8% against -22.5% for a plain hold.
+- **"Structural exits protect profit."** Quoting the caliber actually measured matters here: in the
+  structural-only run, moving-average breaks made up 37,066 of 58,682 exits (63.2%) averaging -1.24%, and
+  the trend-line rule 19,774 (33.7%) averaging **+3.30%** — mixed, not protective. (An earlier version of
+  this bullet quoted the stricter SOP caliber instead, where the same two rules are 33,440 breaks at
+  -1.55% and 15,325 at -0.48%; the two calibers were being read interchangeably.) Where the claim fails
+  cleanly is tail risk: worst trade -26.8% against -22.5% for a plain hold.
 - **"Relaxing the entry threshold fixes concentration."** Raising `j_max` from 13 to 30 lifted average
   holdings from 3.04 to 3.51 but moved excess from +0.10% to +0.08% and excess win rate from -2.01% to
   -2.22%; on a 40-symbol pool the same comparison was +2.26%. Pool size, not the threshold, was the
@@ -252,18 +255,40 @@ The volume-ratio gate, in numbers (10-day excess %, 146 published signals):
 | software caliber, ratio >= 4, no direction split | 21 | -11.30 |
 | all published signals | 146 | -3.66 |
 
-| Threshold scan (ratio >=) | 3 | 4 | 5 |
+| Threshold scan, software caliber (`ratio_std` >=), no direction split | 3 | 4 | 5 |
 | --- | ---: | ---: | ---: |
-| Excess % | -6.91 | -11.30 | -18.34 |
+| n | 39 | 19 | 12 |
+| Excess % | -6.91 | -11.30 | -16.33 |
 
-| Robustness across 24 window / direction / threshold combinations | Value |
+(The third column used to read -18.34, which is the **up-at-09:37** cell at `ratio_std` >= 5, not the
+undirected scan. The relative caliber's own scan is -4.61 / -7.45 / -11.19 / -15.25% at
+`volume_ratio` >= 0.5 / 0.8 / 1.0 / 1.5.)
+
+| Robustness across threshold x direction (software caliber) | Value |
 | --- | ---: |
-| mean excess % | -11.69 |
-| median excess % | -11.38 |
+| cells (threshold 3/4/5 x up/down at 09:37) | 6 |
+| all cells negative | yes |
+| mean excess % | -11.70 |
+| median excess % | -11.46 |
+
+Two corrections are baked into that table. First, the cell count: the earlier write-up claimed 24 cells
+across "window 7/8 bars x 240/241 minutes per day x direction relative to previous close/open x
+threshold 3/4/5", but on these 146 signals the previous-close and open-relative directions produce the
+**same** up/down split at thresholds 4 and 5 and differ by a single row at threshold 3, so those two
+bases were the same cells counted twice — the distinct set is 6. Second, the mean/median: recomputed on
+the distinct cells they are -11.70% / -11.46%, against the -11.69% / -11.38% the 24-cell framing
+reported. The direction of the finding is unchanged (every cell is negative), but the numbers now come
+from a definition a reader can re-derive.
+
+Every figure in this section is generated from the real artifacts by
+`python scripts/rejected_claims.py --write`, which writes the committed manifest
+`docs/research/rejected-claims.json`; run `python scripts/rejected_claims.py` (no arguments) to
+re-derive the numbers on a machine that has `output/` and check them against that manifest. The
+manifest is what CI checks — the artifacts themselves are not committed.
 
 ## Engineering
 
-462 pytest cases in 52 test modules run offline with no network or API key; statement coverage is 87%
+481 pytest cases in 53 test modules run offline with no network or API key; statement coverage is 87%
 (6,588 statements, 861 missed); CI fails below 85% (`--cov-fail-under=85`). GitHub Actions is split into a
 `verify` job (3.12: ruff, mypy, tests, coverage gate, figure reproduction, CLI smoke) and a `compat` job
 (3.10 and 3.11: import every module and run the suite), both printing an environment report; the lint rule

@@ -49,6 +49,38 @@ def test_committed_assets_map_only_png_files():
             assert produced in step.outputs, f"{step.name}: {produced} 应出现在 outputs 里"
 
 
+def test_steps_writing_the_same_directory_do_not_share_an_output_root(tmp_path):
+    """两个步骤写同一个目录时，必须落在不同的输出根下。
+
+    否则跑一次快速档（合成数据）就会把真实全市场的研究产物静默覆盖掉——这正是
+    ``factor_schemes/`` / ``factor_ic/`` 上真实发生过的事：文档里的数字与磁盘上的产物
+    对不上，因为产物已经被冒烟运行改写了。这里按"产出的第一级目录"分组，要求同名
+    目录的步骤其 :meth:`Step.root` 互不相同。
+    """
+    roots: dict[str, dict[Path, str]] = {}
+    for step in build_steps(full=True):
+        for produced in step.outputs:
+            top = produced.split("/")[0]
+            seen = roots.setdefault(top, {})
+            root = step.root(tmp_path)
+            assert seen.get(root, step.name) == step.name, (
+                f"{top}/ 被 {seen[root]} 与 {step.name} 写到同一个根 {root}；"
+                "合成档与真实档必须分目录"
+            )
+            seen[root] = step.name
+
+
+def test_synthetic_factor_steps_write_a_subdirectory_of_the_real_ones():
+    """合成档要落到自己子目录，真实档留在默认根下——这是上面那条的具象化。"""
+    by_name = {step.name: step for step in build_steps(full=True)}
+    for synthetic, real in (
+        ("factor-ic-synthetic", "factor-ic-real"),
+        ("factor-schemes-synthetic", "factor-schemes-real"),
+    ):
+        assert by_name[synthetic].subdir, f"{synthetic} 需要自己的子目录"
+        assert not by_name[real].subdir, f"{real} 应留在默认输出根下"
+
+
 def _write(path: Path, payload: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload.encode("utf-8"))

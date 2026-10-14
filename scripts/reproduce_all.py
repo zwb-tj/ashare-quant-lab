@@ -50,9 +50,20 @@ class Step:
     description: str = ""
     needs_real_data: bool = False
     assets: dict[str, str] = field(default_factory=dict)   # 产出文件 -> docs/assets 里的文件名
+    subdir: str = ""                       # 本步骤自己的输出子目录（见 Step.root）
 
     def argv(self) -> list[str]:
         return [sys.executable, "-m", "aqlab.cli", *self.command]
+
+    def root(self, out_root: Path) -> Path:
+        """本步骤的写入根。
+
+        **为什么每个步骤要有自己的根**：合成档与真实档的步骤曾共用同一个目录
+        （`factor_schemes/`、`factor_ic/`），于是跑一次带合成数据的快速档就把真实全市场
+        产物**静默覆盖**了——事后核对文档数字时才发现对不上，而且看不出是被覆盖的。
+        同名的合成步骤必须落到各自子目录，真实档才留在默认根下。
+        """
+        return out_root / self.subdir if self.subdir else out_root
 
 
 def build_steps(full: bool = False) -> list[Step]:
@@ -77,12 +88,14 @@ def build_steps(full: bool = False) -> list[Step]:
             outputs=("factor_ic/ic_summary.csv", "factor_ic/quantile_returns.csv",
                      "factor_ic/ic_term_structure.png", "factor_ic/report.html"),
             description="因子 IC / 分位收益 / 期限结构（合成票池）",
+            subdir="synthetic",       # 真实档写 factor_ic/，合成档不得覆盖它
         ),
         Step(
             name="factor-schemes-synthetic",
             command=("factor-backtest", "--symbols", "40", "--days", "500", "--out", "OUT"),
             outputs=("factor_schemes/schemes_summary.csv", "factor_schemes/scheme_curves.png"),
             description="定权方案回测（合成票池）",
+            subdir="synthetic",       # 真实档写 factor_schemes/，合成档不得覆盖它
         ),
         Step(
             name="agent-eval-offline",
@@ -163,11 +176,12 @@ def png_size(path: Path) -> tuple[int, int] | None:
 
 def run_step(step: Step, out_root: Path, cwd: Path = ROOT) -> dict:
     """执行一个步骤，返回 ``{"step", "seconds", "returncode", "missing"}``。"""
-    command = [str(out_root) if part == "OUT" else part for part in step.argv()]
+    root = step.root(out_root)
+    command = [str(root) if part == "OUT" else part for part in step.argv()]
     start = time.time()
     completed = run_utf8(command, cwd=cwd)
     seconds = time.time() - start
-    missing = [name for name in step.outputs if not (out_root / name).exists()]
+    missing = [name for name in step.outputs if not (root / name).exists()]
     return {
         "step": step.name,
         "seconds": seconds,
@@ -194,8 +208,9 @@ def verify_assets(
     """
     rows: list[dict] = []
     for step in steps:
+        root = step.root(produced_root)
         for produced, committed in step.assets.items():
-            source = produced_root / produced
+            source = root / produced
             target = assets_dir / committed
             if not source.exists():
                 rows.append({"asset": committed, "status": "missing-produced", "detail": produced})
