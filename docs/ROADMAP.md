@@ -266,6 +266,30 @@
   所以只能说「关波段整体更有利」而不是普适规律）；「高离散导致折 4 失效」与「低动量导致失效」两个猜测都被数据否掉。
 - 待办：状态 × 因子的交互显著性检验；用滚动分档替代全样本分档（当前分档用到了未来信息，属解释性分析）。
 
+## v0.42 · walk-forward 标签泄漏（✅ 已完成，2026-09）
+
+- **发现的真 bug（我自己此前工作的错）**：`src/aqlab/walk_forward_folds.py` 的 `ic_series` 在 d 日
+  用的是 `close[d] -> close[d + horizon]` 这段**未来**收益当标签。`run_walk_forward` 原先只保证
+  训练**日期**早于测试日期（`usable[:start]` 取尾若干），**没保证训练样本的标签窗口不伸进测试段**
+  ——折边界附近若干训练截面的 IC 实际用了测试期价格，等于**用测试期的价格决定训练结论**。
+  这是 walk-forward 里最容易被忽略的一环：**日期不重叠，标签仍然重叠**。
+- 修法：按**最大持有期** purge（`clean = [d for d in history if pos[d] + purge < pos[test_dates[0]]]`），
+  `purge = max(config.horizons)`，使折划分与持有期无关。实测泄漏样本：horizon=20 时折 2/3/4/5
+  各有 3 个训练样本越界（horizon=1/5 因为 step_days=5 恰好不越界）。
+- **对结论的影响（如实记录）**：多折稳健 12 → **14**；至少被某折选中 23 → **29**、被选中 ≥2 折
+  16 → **18**；折 4 被选中 20 → **22**（存活仍 0），其它三折合计存活 36 → **33**；成本闸门候选集
+  18 → **19**（样本外 11 ∪ 多折稳健 14）；毛超额为正 13/18 → **14/19**、净超额为正 10/18 → **11/19**、
+  **净超额 t>2 仍 3/19**；平均换手 0.934 → **0.937**、盈亏平衡成本中位数 26.4 → **29.4 bps**。
+  多折稳健 14 个里净超额为正只有 7 个、没有一个保住 t>2 —— **"3 个可交易候选"这个结论本身没被推翻**，
+  变的是每道闸门的折数与计数。
+- 守卫测试：`tests/test_walk_forward_folds.py::test_folds_train_before_test_and_do_not_overlap` 原先
+  只比 `max(train) < min(test)`（看不见标签泄漏）；现对每折断言 `pos[max(train)] + horizon < pos[min(test)]`。
+  对抗性验证：复现旧逻辑（无 purge）→ 该断言报出泄漏折 `[2, 3, 4]`；修好后为空。
+- 同步：重跑 `scripts/alpha_walk_forward.py` 与 `scripts/alpha_cost_check.py`，
+  `scripts/alpha_evidence_chain.py --write` 重生成入库清单，中英 README / ALPHA_RESEARCH / CASE_STUDY
+  的全部当前声明改为新值（vX.Y 历史条目按惯例保留当时数字）。
+- 覆盖率随新增代码变为 6,593 语句 / 862 未覆盖（仍 87%），481 测试 / 53 模块。
+
 ## v0.41 · 被否结论也进仓库（✅ 已完成，2026-09）
 
 - **发现的真 bug（我自己此前工作的错，同类第二次出现）**：`scripts/reproduce_all.py` 的

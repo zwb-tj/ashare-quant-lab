@@ -65,22 +65,22 @@ def main(argv: list[str] | None = None) -> int:
 
         wf = pd.read_csv(out_real / "walk_forward_summary.csv")
         check("多折组合 74", len(wf) == 74, f"实际 {len(wf)}")
-        check("多折稳健 12", int(wf["robust"].sum()) == 12, f"实际 {int(wf['robust'].sum())}")
+        check("多折稳健 14", int(wf["robust"].sum()) == 14, f"实际 {int(wf['robust'].sum())}")
 
         detail = pd.read_csv(out_real / "walk_forward_detail.csv")
         fold4 = detail[detail["fold"] == 4]
         check(
-            "折 4 被选中 20 且存活 0",
-            int(fold4["selected"].sum()) == 20 and int(fold4["survived"].sum()) == 0,
+            "折 4 被选中 22 且存活 0",
+            int(fold4["selected"].sum()) == 22 and int(fold4["survived"].sum()) == 0,
             f"选中 {int(fold4['selected'].sum())}｜存活 {int(fold4['survived'].sum())}",
         )
 
         costs = pd.read_csv(out_real / "alpha_portfolio_costs.csv")
-        check("成本组合 18（前几道闸门并集）", len(costs) == 18, f"实际 {len(costs)}")
+        check("成本组合 19（前几道闸门并集）", len(costs) == 19, f"实际 {len(costs)}")
         check("净超额 t>2 为 3", int((costs["net_excess_t"] > 2).sum()) == 3)
         check(
-            "盈亏平衡成本中位数 26.4bps",
-            abs(float(costs["break_even_bps"].median()) - 26.4) < 0.05,
+            "盈亏平衡成本中位数 29.4bps",
+            abs(float(costs["break_even_bps"].median()) - 29.4) < 0.05,
             f"实际 {float(costs['break_even_bps'].median()):.1f}",
         )
 
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     brief = Path(args.brief) if args.brief else None
     if brief and brief.exists():
         text = brief.read_text(encoding="utf-8")
-        for figure in ("41", "35", "28", "11 / 16", "12", "3"):
+        for figure in ("41", "35", "28", "11 / 16", "14", "3"):
             check(f"速览包含证据链数字 {figure}", figure in text)
 
     print("=== 速览声明核对 ===")

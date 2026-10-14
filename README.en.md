@@ -61,7 +61,7 @@ python scripts/alpha_evidence_chain.py     # check the factor evidence-chain num
 | **Real market scale** | Local LevelDB quote store, **5,424 symbols** (daily from 2000, minute bars from 2025-01)｜a single full-market study covers **58,682 trades** |
 | **Statistical rigour** | Every conclusion carries a **sample size + same-period benchmark excess + Welch t statistic**; the benchmark is an equal-weight market index over the same entry date and holding period｜key findings are checked across **24 parameter/caliber combinations** |
 | **Falsifiable conclusions** | **Several hypotheses were rejected by the project's own data** and written up: the screening rule shows -0.40 ~ -4.23% excess over 334 published records (13 of 24 cells significantly negative); structural exits compress holding to 3-5 days and turn excess negative; all five portfolio weighting methods lose to equal weights |
-| **Formulaic alphas** | A clean-room Alpha101 subset, **44 implemented** with the **22 needing industry or market-cap data explicitly skipped and the missing input named**; four gates test **different candidate sets (not a funnel that tightens layer by layer)**: 41 raw significant cells → 35 (BH-FDR) → 28 (Bonferroni) → 11/16 surviving out of sample → only **3/18** with a net-excess t above 2 after 20 bps costs, and the intersection of all four gates is **0** |
+| **Formulaic alphas** | A clean-room Alpha101 subset, **44 implemented** with the **22 needing industry or market-cap data explicitly skipped and the missing input named**; four gates test **different candidate sets (not a funnel that tightens layer by layer)**: 41 raw significant cells → 35 (BH-FDR) → 28 (Bonferroni) → 11/16 surviving out of sample → only **3/19** with a net-excess t above 2 after 20 bps costs, and the intersection of all four gates is **0** |
 | **LLM / agent layer** | Read-only tools + bounded plan-act-observe loop + full-step trace｜**the same 20 tasks evaluated side by side for a scripted agent and a real model** (grounded-number rate 0.989, abstention 1.000, zero constraint violations)｜`aqlab trace` renders a run as a **single self-contained HTML file** that flags failed calls and ungrounded numbers |
 | **Reproducibility** | `scripts/reproduce_all.py --verify` regenerates the README figures and compares them with the committed versions｜`scripts/verify_fresh_clone.py` runs install → tests → figure check inside a **fresh clone and an isolated venv**｜the factor evidence-chain numbers live in a committed manifest ([alpha-evidence-chain.json](docs/research/alpha-evidence-chain.json)) checked by `scripts/alpha_evidence_chain.py`, so they are verified in a fresh clone and in CI rather than only where the gitignored `output/` happens to exist |
 | **Documentation** | [Alpha research write-up](docs/ALPHA_RESEARCH.md)｜[Case study](docs/CASE_STUDY.md)｜[Architecture](docs/ARCHITECTURE.md)｜[Roadmap](docs/ROADMAP.md)｜[中文 README](README.md) |
@@ -748,6 +748,15 @@ Only two findings hold: **the 0AMV band open (+0.58% vs band closed -0.31%)**, a
 - ✅ **v0.10** Picks-log backtest: next-day open entry + dedupe window + holding-period returns + **same-period equal-weight basket excess** (`aqlab picks-backtest`).
 - ✅ **v0.11** Full-market verification: full-market B1 re-screening (5,424 symbols) + 0AMV band gate + exit-rule engine (stop/target, white-yellow lines, leash, drip) + opening volume features (`aqlab universe-study`).
 - ✅ **v0.12** Long-sample review: 21-month stratified sampling (13,492 trades) + out-of-sample testing of opening features (conclusion: opening-pattern edges are unstable, while the 0AMV regime and the holding period are stable).
+- ✅ **v0.42** Walk-forward label leakage (a real bug): folds only required training **dates** to precede test
+  dates, but a training sample's label is the future return `close[d] → close[d+horizon]`, so samples near a fold
+  boundary had label windows reaching into the test period — **dates do not overlap, labels still do**, i.e. test-period
+  prices decided the training conclusion. Folds are now purged by the maximum holding period. After the fix the
+  walk-forward robust set goes 12 → **14**, fold 4's selected count 20 → **22** (still zero survivors), the cost
+  candidate union 18 → **19**, and the median break-even cost 26.4 → **29.4 bps** — while **the headline "3 tradable
+  candidates after costs" is not overturned**; what changed is each gate's fold and candidate counts. The guard test
+  went from comparing dates to asserting a training sample's label window never touches the test period, and was
+  falsified against the old logic.
 - ✅ **v0.41** Rejected conclusions made checkable (a real bug + real documentation errors): the synthetic and real
   entries of `scripts/reproduce_all.py` shared **the same output directory**, so one quick synthetic pass silently
   overwrote the real full-market artifacts (the second occurrence of this class of bug); each step now gets its own

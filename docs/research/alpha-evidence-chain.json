@@ -27,8 +27,8 @@
     "in_sample_significant": 16,
     "out_of_sample_survivors": 11,
     "walkforward_combinations": 74,
-    "walkforward_robust": 12,
-    "costed_combinations": 18,
+    "walkforward_robust": 14,
+    "costed_combinations": 19,
     "net_excess_t_above_2": 3
   },
   "gate_overlap": {
@@ -55,9 +55,9 @@
       ]
     },
     "bh_and_oos": 11,
-    "oos_and_robust": 5,
+    "oos_and_robust": 6,
     "robust_and_costed": 0,
-    "robust_with_cost_data": 12,
+    "robust_with_cost_data": 14,
     "robust_missing_cost_data": [],
     "all_four_gates": 0
   },
@@ -68,12 +68,12 @@
       4,
       5
     ],
-    "fold4_selected": 20,
+    "fold4_selected": 22,
     "fold4_survived": 0
   },
   "cost_check": {
-    "median_break_even_bps": 26.4,
-    "mean_turnover": 0.934
+    "median_break_even_bps": 29.4,
+    "mean_turnover": 0.937
   },
   "state_dependence": {
     "factors_compared": 10,

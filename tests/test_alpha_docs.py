@@ -19,7 +19,7 @@ def test_alpha_research_doc_exists_and_states_the_chain():
     assert DOC.exists(), "因子研究自述文档应当存在"
     text = DOC.read_text(encoding="utf-8")
     # 证据链的关键数字必须在文档里出现（它们是整条链的骨架）
-    for figure in ("41", "35", "28", "11 / 16", "12", "3"):
+    for figure in ("41", "35", "28", "11 / 16", "14", "3"):
         assert figure in text, f"文档应包含证据链数字 {figure}"
     # 关键局限必须写明，避免结论被单独引用
     for caveat in ("幸存者偏差", "未来信息", "未建模"):

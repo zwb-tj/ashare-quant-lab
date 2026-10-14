@@ -69,14 +69,23 @@ def test_ic_series_keeps_dates_and_respects_horizon():
 
 
 def test_folds_train_before_test_and_do_not_overlap():
-    _close, _open, frames, _panel = _market()
-    outcome = run_walk_forward(frames, FoldConfig(horizons=(5,), step_days=5, min_history=120, min_symbols=8, n_folds=4))
+    _close, _open, frames, panel = _market()
+    horizon = 5
+    outcome = run_walk_forward(frames, FoldConfig(horizons=(horizon,), step_days=5, min_history=120, min_symbols=8, n_folds=4))
     folds = outcome["folds"]
     # 第一折没有"更早的历史"可训练，因此被跳过——这不是缺陷，而是 walk-forward 的定义使然
     assert len(folds) == 3, "n_folds=4 时第一折无训练数据，应剩 3 折"
     assert [fold["fold"] for fold in folds] == [2, 3, 4]
+    pos = {date: index for index, date in enumerate(panel.dates)}
     for fold in folds:
         assert max(fold["train"]) < min(fold["test"]), "训练段必须严格早于测试段"
+        # 只比日期是看不见标签泄漏的：训练样本的 IC 用 d -> d+horizon 的未来收益做标签，
+        # 所以训练段尾部若贴着测试段，标签窗口会伸进测试段（等于用测试期价格决定训练结论）。
+        label_end = pos[max(fold["train"])] + horizon
+        assert label_end < pos[min(fold["test"])], (
+            f"折 {fold['fold']} 的训练样本标签窗口末端 {label_end} 触到了测试段起点 "
+            f"{pos[min(fold['test'])]}（purge 失效）"
+        )
     # 测试段之间不重叠
     for first, second in itertools.pairwise(folds):
         assert max(first["test"]) < min(second["test"]), "相邻折的测试段不能重叠"

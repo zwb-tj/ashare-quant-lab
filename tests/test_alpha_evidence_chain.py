@@ -2,7 +2,7 @@
 """把因子证据链钉在一份**可提交**的清单上（不依赖 `output/`）。
 
 落差在哪：`docs/ALPHA_RESEARCH.md` / README / `docs/CASE_STUDY.md` 的核心数字
-（41 → 35 → 28、11/16、12/74、3/18）来自真实全市场产物，而产物写在 gitignored 的
+（41 → 35 → 28、11/16、14/74、3/19）来自真实全市场产物，而产物写在 gitignored 的
 `output/` 下。原先校验它们的断言都挂在"产物存在"的前提后面，于是在**全新克隆与 CI 里
 整体静默跳过** —— 文档最核心的声明，恰好是最需要被检查的地方没人检查。
 
@@ -201,7 +201,7 @@ def test_gate_overlap_is_recorded_and_not_described_as_a_funnel(manifest: dict) 
     """证据链不是层层收紧的漏斗——这条必须被钉住，否则又会漂回箭头叙述。
 
     真实关系（来自产物）：多折只跑 5/20 日持有期，成本闸门检验前两者的并集，
-    所以链条在 11 → 12 处会**变大**，且四个闸门的交集是 0。
+    所以链条在 11 → 14 处会**变大**，且四个闸门的交集是 0。
     """
     overlap = manifest["gate_overlap"]
     assert overlap["all_four_gates"] == 0

@@ -16,6 +16,12 @@
 (因子, 持有期) 只需扫一遍时间轴得到 IC 序列，再按折的日期区间切片聚合即可——既省时间，
 又保证各折口径完全一致（不会因为折边界的取样相位不同而口径漂移）。
 
+**purge（标签不越界）**：d 日的 IC 用的是 ``close[d] -> close[d + horizon]`` 这段**未来**
+收益。只要求"训练日期早于测试日期"是不够的——训练段里靠近折边界的样本，其标签窗口会伸进
+测试段，等于**用测试期的价格决定训练结论**。因此训练样本必须满足
+``d + horizon < 测试段起点``，窗口末端与测试段之间留出这段间隔（取最大持有期，使折的划分
+与持有期无关）。这是 walk-forward 里最容易被忽略的一环：日期不重叠，标签仍然重叠。
+
 **汇总口径**：`folds_selected` 是"训练段达标"的折数，`folds_survived` 是在这些折里
 测试段**同向且达标**的折数。真正稳的因子应当在**多数折**里都存活，而不是只在一折里好看。
 """
@@ -117,6 +123,7 @@ def run_walk_forward(
         raise ValueError("no factor could be computed (check min_history and data length)")
 
     dates = list(panel.dates)
+    pos = {date: index for index, date in enumerate(dates)}
     sampled = dates[:: config.step_days]
 
     # 折必须切在**因子真正有值**的时间段上：因子有 min_history 预热期，之前全是 NaN；
@@ -143,8 +150,14 @@ def run_walk_forward(
         history = usable[:start]
         if not history:
             continue
-        take = max(int(len(history) * config.train_fraction), 5)
-        train_dates = history[-take:]
+        # purge：训练样本的标签窗口不能伸进测试段。用**最大持有期**做间隔，使折的划分
+        # 与持有期无关（否则 horizons=(5,20) 的两个持有期会有两套折边界，汇总时对不齐）。
+        purge = max(config.horizons)
+        clean = [d for d in history if pos[d] + purge < pos[test_dates[0]]]
+        if not clean:
+            continue
+        take = max(int(len(clean) * config.train_fraction), 5)
+        train_dates = clean[-take:]
         folds.append({"fold": fold_index + 1, "train": train_dates, "test": test_dates, "train_start": train_dates[0], "test_start": test_dates[0]})
 
     rows: list[dict] = []
